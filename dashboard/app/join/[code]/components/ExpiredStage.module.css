@@ -1,0 +1,80 @@
+/* Event expired: an isometric concert stage, curtain down, hairline strokes.
+   Dark palette from the event-expired-iso mock-up. */
+
+.stage {
+  --ink: #f0ede6;
+  --muted: #8a857c;
+  --line: #2a2823;
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  width: min(100%, 420px);
+  aspect-ratio: 5 / 4;
+  margin: 0 auto 24px;
+}
+
+.stage svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+.stage path,
+.stage line,
+.stage circle {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.stage .sil {
+  stroke: var(--ink);
+}
+.stage .crease {
+  stroke: var(--muted);
+}
+.stage .guide {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.stage .dot {
+  fill: var(--muted);
+  stroke: none;
+}
+
+/* Hover or tap: the curtain settles, the tassel swings. */
+.curtain {
+  transform-box: view-box;
+  transition: transform 800ms var(--spring);
+}
+.tassel {
+  transform-box: view-box;
+  transform-origin: 200px 174px;
+  transition: transform 700ms var(--spring);
+}
+.stage:hover .curtain,
+.stage:focus-within .curtain {
+  transform: translateY(12px);
+}
+.stage:hover .tassel,
+.stage:focus-within .tassel {
+  transform: rotate(-16deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .curtain,
+  .tassel {
+    transition: none;
+  }
+}
+
+.stamp {
+  margin-top: 20px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8a857c;
+}

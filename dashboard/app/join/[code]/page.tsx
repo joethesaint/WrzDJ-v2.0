@@ -17,6 +17,7 @@ import Toast from './components/Toast';
 import TickNumber from './components/TickNumber';
 import Sparks from './components/Sparks';
 import SongDetailSheet from './components/SongDetailSheet';
+import { ExpiredStage, ExpiredStamp } from './components/ExpiredStage';
 
 const POLL_INTERVAL_MS = 10000;
 const BACKOFF_INTERVAL_MS = 60000;
@@ -493,7 +494,8 @@ export default function JoinEventPage() {
     const is404 = error?.status === 404;
     return (
       <div className="guest-tower" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
-        <div style={{ textAlign: 'center', maxWidth: 360 }}>
+        <div style={{ textAlign: 'center', maxWidth: is410 ? 420 : 360 }}>
+          {is410 && <ExpiredStage />}
           <div style={{ fontSize: 33.9, fontWeight: 800, letterSpacing: -0.6, marginBottom: 10 }}>
             {is410 ? 'Event Expired' : is404 ? 'Event Not Found' : 'Oops!'}
           </div>
@@ -504,6 +506,7 @@ export default function JoinEventPage() {
                 ? 'This event does not exist.'
                 : error?.message || 'Event not found or has expired.'}
           </div>
+          {is410 && <ExpiredStamp />}
         </div>
       </div>
     );

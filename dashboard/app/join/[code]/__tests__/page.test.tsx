@@ -201,6 +201,26 @@ describe('JoinEventPage — error states', () => {
     });
   });
 
+  it('shows the empty-stage illustration when the event has expired', async () => {
+    mockApi.getPublicEvent.mockRejectedValue(new MockApiError('Gone', 410));
+    render(<JoinEventPage />);
+    await waitFor(() => {
+      expect(
+        screen.getByRole('img', { name: /concert stage. the curtain is down/i })
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText('Ended')).toBeInTheDocument();
+  });
+
+  it('does not show the stage illustration when the event is not found', async () => {
+    mockApi.getPublicEvent.mockRejectedValue(new MockApiError('Not found', 404));
+    render(<JoinEventPage />);
+    await waitFor(() => {
+      expect(screen.getByText('Event Not Found')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('img', { name: /concert stage/i })).not.toBeInTheDocument();
+  });
+
   it('shows Event Not Found when API returns 404', async () => {
     mockApi.getPublicEvent.mockRejectedValue(new MockApiError('Not found', 404));
     render(<JoinEventPage />);
