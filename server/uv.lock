@@ -2888,7 +2888,7 @@ requires-dist = [
 provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
-build = [{ name = "setuptools", specifier = "==83.0.0" }]
+build = [{ name = "setuptools", specifier = ">=83.0.0" }]
 
 [[package]]
 name = "yarl"

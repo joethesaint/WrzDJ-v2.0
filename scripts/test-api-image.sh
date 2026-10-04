@@ -36,9 +36,11 @@ from pathlib import Path
 import shutil
 
 from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 
 errors = []
 checked = 0
+expected_names = set()
 for line in Path("/tmp/expected-requirements.txt").read_text().splitlines():
     if not line.strip() or line.lstrip().startswith("#"):
         continue
@@ -46,6 +48,7 @@ for line in Path("/tmp/expected-requirements.txt").read_text().splitlines():
     if requirement.marker and not requirement.marker.evaluate():
         continue
     checked += 1
+    expected_names.add(canonicalize_name(requirement.name))
     try:
         installed = importlib.metadata.version(requirement.name)
     except importlib.metadata.PackageNotFoundError:
@@ -54,6 +57,15 @@ for line in Path("/tmp/expected-requirements.txt").read_text().splitlines():
         errors.append(f"{requirement}: installed {installed or 'MISSING'}")
 if not checked:
     errors.append("No production dependencies were checked")
+# Regression for 63b1a819: matching required versions also allowed extra build
+# dependencies and a reintroduced editable application installation to pass.
+installed_names = {
+    canonicalize_name(distribution.metadata["Name"])
+    for distribution in importlib.metadata.distributions()
+}
+unexpected = installed_names - expected_names
+if unexpected:
+    errors.append(f"Unexpected installed distributions: {', '.join(sorted(unexpected))}")
 for installer in ("pip", "uv"):
     if importlib.util.find_spec(installer) or shutil.which(installer):
         errors.append(f"The runtime contains {installer}")
