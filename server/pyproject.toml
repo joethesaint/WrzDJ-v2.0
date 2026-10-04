@@ -61,6 +61,10 @@ dev = [
 requires = ["setuptools>=83.0.0"]
 build-backend = "setuptools.build_meta"
 
+[dependency-groups]
+# pyaes and ratelimit publish only sdists; lock their backend separately from runtime.
+build = ["setuptools==83.0.0"]
+
 [tool.setuptools.packages.find]
 where = ["."]
 
