@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 SPOTIFY_TIMEOUT = (5, 10)  # 5s connect, 10s read
 MAX_RETRIES = 2
 INITIAL_BACKOFF = 0.5  # seconds
+SEARCH_LIMIT = 10  # Spotify rejects limit > 10 for development-mode apps
 
 # Initialize Spotify client with client credentials flow (thread-safe)
 _sp: spotipy.Spotify | None = None
@@ -107,7 +108,7 @@ def _call_spotify_api(query: str) -> list[SearchResult]:
 
     for attempt in range(MAX_RETRIES + 1):
         try:
-            response = sp.search(q=query, type="track", limit=20)
+            response = sp.search(q=query, type="track", limit=SEARCH_LIMIT)
             break
         except (Timeout, ReadTimeout) as e:
             last_exception = e

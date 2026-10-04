@@ -227,3 +227,17 @@ class TestSearchSongs:
         assert len(entries) == 1
         assert entries[0].id == original_id
         assert "new123" in entries[0].results_json
+
+
+class TestSpotifySearchLimit:
+    """Spotify rejects search limits above 10 for development-mode apps (400 "Invalid limit")."""
+
+    @patch("app.services.spotify._get_spotify_client")
+    def test_search_requests_at_most_10_results(self, mock_get_client: MagicMock):
+        sp = MagicMock()
+        sp.search.return_value = {"tracks": {"items": []}}
+        mock_get_client.return_value = sp
+
+        _call_spotify_api("daft punk one more time")
+
+        assert sp.search.call_args.kwargs["limit"] <= 10
