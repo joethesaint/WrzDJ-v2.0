@@ -17,7 +17,7 @@ import Toast from './components/Toast';
 import TickNumber from './components/TickNumber';
 import Sparks from './components/Sparks';
 import SongDetailSheet from './components/SongDetailSheet';
-import { ExpiredStage, ExpiredStamp } from './components/ExpiredStage';
+import { JoinErrorScreen } from './components/JoinErrorScreen';
 
 const POLL_INTERVAL_MS = 10000;
 const BACKOFF_INTERVAL_MS = 60000;
@@ -133,6 +133,28 @@ export default function JoinEventPage() {
     setNickname(result.nickname);
     setGateComplete(true);
   };
+
+  /* Check the event exists and is live before asking the guest to identify,
+     so an expired or unknown link says so straight away. The public event
+     endpoint needs no guest cookie. Other failures fall through to the gate. */
+  const [eventCheck, setEventCheck] = useState<'pending' | 'open' | 'closed'>('pending');
+  useEffect(() => {
+    let active = true;
+    api.getPublicEvent(code).then(
+      () => { if (active) setEventCheck('open'); },
+      (err) => {
+        if (!active) return;
+        if (err instanceof ApiError && (err.status === 404 || err.status === 410)) {
+          setError({ message: err.message, status: err.status });
+          setLoading(false);
+          setEventCheck('closed');
+        } else {
+          setEventCheck('open');
+        }
+      },
+    );
+    return () => { active = false; };
+  }, [code]);
 
   /* Decide gate mode on load. Frictionless events skip NicknameGate entirely:
      the guest gets an auto-generated name and lands straight on search. */
@@ -456,12 +478,17 @@ export default function JoinEventPage() {
 
   /* ── Early returns ──────────────────────────────────────────── */
 
+  if (eventCheck === 'closed') {
+    return <JoinErrorScreen error={error} />;
+  }
+
   if (!gateComplete) {
     // Wait for the frictionless decision before rendering the nickname gate,
     // so frictionless events never flash the gate on their way to auto-name.
     // The overlay keeps Turnstile's challenge reachable (and failures
     // visible/retryable) while the decision is pending (issue #419).
-    if (!gateDecided) {
+    // Also wait for the event check, so a dead link never shows the gate.
+    if (!gateDecided || eventCheck === 'pending') {
       return (
         <HumanVerificationOverlay
           state={gateVerificationFailed ? 'failed' : humanState}
@@ -490,26 +517,7 @@ export default function JoinEventPage() {
   }
 
   if (error || !event) {
-    const is410 = error?.status === 410;
-    const is404 = error?.status === 404;
-    return (
-      <div className="guest-tower" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
-        <div style={{ textAlign: 'center', maxWidth: is410 ? 420 : 360 }}>
-          {is410 && <ExpiredStage />}
-          <div style={{ fontSize: 33.9, fontWeight: 800, letterSpacing: -0.6, marginBottom: 10 }}>
-            {is410 ? 'Event Expired' : is404 ? 'Event Not Found' : 'Oops!'}
-          </div>
-          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 18.2 }}>
-            {is410
-              ? 'This event has ended and is no longer accepting requests.'
-              : is404
-                ? 'This event does not exist.'
-                : error?.message || 'Event not found or has expired.'}
-          </div>
-          {is410 && <ExpiredStamp />}
-        </div>
-      </div>
-    );
+    return <JoinErrorScreen error={error} />;
   }
 
   /* Requests closed — shown only before user has requested (no leaderboard yet) */

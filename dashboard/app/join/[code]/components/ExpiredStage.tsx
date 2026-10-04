@@ -48,6 +48,6 @@ export function ExpiredStage() {
   );
 }
 
-export function ExpiredStamp() {
-  return <div className={styles.stamp}>Ended</div>;
+export function ExpiredStamp({ label = 'Ended' }: { label?: string }) {
+  return <div className={styles.stamp}>{label}</div>;
 }
