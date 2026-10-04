@@ -67,3 +67,41 @@ class TestPairChallenge:
         )
         assert response.status_code == 400
         assert "expired" in response.json()["detail"].lower()
+
+
+class TestPairChallengeIndependence:
+    """Issue #713: concurrent challenges from one IP stay independent."""
+
+    def test_second_challenge_from_same_ip_keeps_first_valid(self, client: TestClient):
+        first = client.get("/api/public/kiosk/pair-challenge").json()
+        client.get("/api/public/kiosk/pair-challenge")  # second kiosk behind the same NAT
+        response = client.post(
+            "/api/public/kiosk/pair",
+            headers={"X-Pair-Nonce": first["nonce"]},
+        )
+        assert response.status_code == 200
+
+    def test_invalid_attempt_does_not_consume_valid_challenge(self, client: TestClient):
+        challenge = client.get("/api/public/kiosk/pair-challenge").json()
+        bad = client.post(
+            "/api/public/kiosk/pair",
+            headers={"X-Pair-Nonce": "totally-wrong-nonce-value-here"},
+        )
+        assert bad.status_code == 400
+        good = client.post(
+            "/api/public/kiosk/pair",
+            headers={"X-Pair-Nonce": challenge["nonce"]},
+        )
+        assert good.status_code == 200
+
+    def test_nonce_rejected_from_a_different_ip(self, client: TestClient, monkeypatch):
+        from app.api import kiosk
+
+        monkeypatch.setattr(kiosk, "get_client_ip", lambda request: "203.0.113.1")
+        challenge = client.get("/api/public/kiosk/pair-challenge").json()
+        monkeypatch.setattr(kiosk, "get_client_ip", lambda request: "203.0.113.2")
+        response = client.post(
+            "/api/public/kiosk/pair",
+            headers={"X-Pair-Nonce": challenge["nonce"]},
+        )
+        assert response.status_code == 400
