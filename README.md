@@ -237,7 +237,7 @@ graph TD
 
 - Docker + Docker Compose
 - Python 3.11+
-- Node.js 22+
+- Node.js 24.15+ on the 24.x LTS line, or Node.js 26+
 - [Tidal Developer Account](https://developer.tidal.com/) (for song search and album art enrichment)
 
 ### 1. Clone and configure
@@ -292,6 +292,9 @@ npm run dev
 The bridge connects to DJ equipment and reports "Now Playing" data to the server. It requires a running WrzDJ server (steps 1-6 above).
 
 **Desktop app (recommended):** Download from [Releases](https://github.com/thewrz/WrzDJ/releases) (Windows `.exe`, macOS `.dmg`, Linux `.AppImage`). Also available via `winget install WrzDJ.WrzDJ-Bridge` on Windows.
+
+The desktop app requires macOS 13 (Ventura) or later. Release builds support
+Windows/Linux x64 and macOS x64/arm64.
 
 **CLI bridge:**
 
