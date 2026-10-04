@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react';
+﻿import { render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
-import KioskPreviewPage from '../page';
+import KioskPreviewPage from '@/app/kiosk-preview/PreviewClient';
 
 describe('KioskPreviewPage', () => {
   it('renders the three theme blocks', () => {
@@ -13,7 +13,8 @@ describe('KioskPreviewPage', () => {
   it('renders the four recently-played placements', () => {
     render(<KioskPreviewPage />);
     for (const id of ['2a', '2b', '2c', '2d']) {
-      expect(screen.getByRole('heading', { name: new RegExp(`^${id}`) })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: new RegExp(`Option ${id}`, 'i') })).toBeInTheDocument();
     }
   });
 });
+
