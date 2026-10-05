@@ -125,9 +125,8 @@ describe('KioskDisplayPage', () => {
       // Wait for loading to finish
       await screen.findByText('Test Event');
 
-      // All three sections should be present
-      expect(screen.getByText(/now playing/i)).toBeInTheDocument();
-      expect(document.querySelector('.kiosk-panel-label')).toBeInTheDocument();
+      // Now playing section should be present
+      await screen.findByText(/now playing/i);
       expect(screen.getByText(/recently played/i)).toBeInTheDocument();
 
       // Now playing content should show
@@ -144,16 +143,14 @@ describe('KioskDisplayPage', () => {
 
       await screen.findByText('Test Event');
 
-      // Now Playing section should NOT be present (only in panel label)
+      // Now Playing section should NOT be present
       expect(screen.queryByText(/now playing/i)).not.toBeInTheDocument();
 
       // Queue and history should still be present
-      const panelLabels = document.querySelectorAll('.kiosk-panel-label');
-      expect(panelLabels.length).toBeGreaterThanOrEqual(2);
       expect(screen.getByText(/recently played/i)).toBeInTheDocument();
     });
 
-    it('shows history section as a separate column, not nested in queue', async () => {
+    it('shows history section inside queue area per Decision Q2 (Option 2b)', async () => {
       vi.mocked(api.getKioskDisplay).mockResolvedValue(mockKioskDisplay);
       vi.mocked(api.getNowPlaying).mockResolvedValue(mockNowPlaying);
       vi.mocked(api.getPlayHistory).mockResolvedValue(mockPlayHistory);
@@ -166,14 +163,9 @@ describe('KioskDisplayPage', () => {
       const queueHeader = document.querySelector('.queue-header');
       const queuePanel = queueHeader?.closest('.kiosk-panel');
       const historyLabel = screen.getByText(/recently played/i);
-      const historyPanel = historyLabel.closest('.kiosk-panel');
 
-      // History section should NOT be inside queue section
-      expect(queuePanel).not.toContainElement(historyPanel as HTMLElement);
-
-      // Both should be direct children of kiosk-main
-      expect(queuePanel?.parentElement?.classList.contains('kiosk-main')).toBe(true);
-      expect(historyPanel?.parentElement?.classList.contains('kiosk-main')).toBe(true);
+      // History section is inside queue panel per Option 2b
+      expect(queuePanel).toContainElement(historyLabel);
     });
 
     it('displays accepted requests in the queue section', async () => {
@@ -250,7 +242,7 @@ describe('KioskDisplayPage', () => {
 
       await screen.findByText('Test Event');
 
-      expect(screen.getByText('Requests Closed')).toBeInTheDocument();
+      expect(screen.getByText(/requests closed/i)).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /request a song/i })).not.toBeInTheDocument();
     });
 
@@ -751,127 +743,6 @@ describe('KioskDisplayPage', () => {
     });
   });
 
-  describe('Banner', () => {
-    it('applies banner gradient with valid colors', async () => {
-      vi.mocked(api.getKioskDisplay).mockResolvedValue({
-        ...mockKioskDisplay,
-        banner_colors: ['#1a2b3c', '#4d5e6f', '#7a8b9c'],
-      });
-      vi.mocked(api.getNowPlaying).mockResolvedValue(null);
-      vi.mocked(api.getPlayHistory).mockResolvedValue({ items: [], total: 0 });
-
-      render(<KioskDisplayPage />);
-
-      await screen.findByText('Test Event');
-
-      const container = screen.getByText('Test Event').closest('.kiosk-container') as HTMLElement;
-      const bgStyle = container?.style.getPropertyValue('--kiosk-bg');
-      expect(bgStyle).toContain('#1a2b3c');
-      expect(bgStyle).toContain('#4d5e6f');
-      expect(bgStyle).toContain('#7a8b9c');
-    });
-
-    it('falls back for invalid color values', async () => {
-      vi.mocked(api.getKioskDisplay).mockResolvedValue({
-        ...mockKioskDisplay,
-        banner_colors: ['bad', '#4d5e6f', 'nope'],
-      });
-      vi.mocked(api.getNowPlaying).mockResolvedValue(null);
-      vi.mocked(api.getPlayHistory).mockResolvedValue({ items: [], total: 0 });
-
-      render(<KioskDisplayPage />);
-
-      await screen.findByText('Test Event');
-
-      const container = screen.getByText('Test Event').closest('.kiosk-container') as HTMLElement;
-      const bgStyle = container?.style.getPropertyValue('--kiosk-bg');
-      // Should use fallback for invalid colors
-      expect(bgStyle).toContain('#1a1a2e'); // fallback for first
-      expect(bgStyle).toContain('#4d5e6f'); // valid
-      expect(bgStyle).toContain('#0f3460'); // fallback for third
-    });
-
-    it('renders banner image when present', async () => {
-      vi.mocked(api.getKioskDisplay).mockResolvedValue({
-        ...mockKioskDisplay,
-        banner_kiosk_url: '/uploads/banners/test-kiosk.webp',
-      });
-      vi.mocked(api.getNowPlaying).mockResolvedValue(null);
-      vi.mocked(api.getPlayHistory).mockResolvedValue({ items: [], total: 0 });
-
-      render(<KioskDisplayPage />);
-
-      await screen.findByText('Test Event');
-
-      const bannerBg = document.querySelector('.kiosk-banner-bg img') as HTMLImageElement;
-      expect(bannerBg).toBeInTheDocument();
-      expect(bannerBg.src).toContain('/uploads/banners/test-kiosk.webp');
-    });
-
-    it('does not render banner when no banner_kiosk_url', async () => {
-      setupDefaultMocks();
-
-      render(<KioskDisplayPage />);
-
-      await screen.findByText('Test Event');
-
-      expect(document.querySelector('.kiosk-banner-bg')).not.toBeInTheDocument();
-    });
-
-    it('hides banner container on image load error', async () => {
-      vi.mocked(api.getKioskDisplay).mockResolvedValue({
-        ...mockKioskDisplay,
-        banner_kiosk_url: '/uploads/banners/missing-kiosk.webp',
-      });
-      vi.mocked(api.getNowPlaying).mockResolvedValue(null);
-      vi.mocked(api.getPlayHistory).mockResolvedValue({ items: [], total: 0 });
-
-      render(<KioskDisplayPage />);
-
-      await screen.findByText('Test Event');
-
-      const bannerImg = document.querySelector('.kiosk-banner-bg img') as HTMLImageElement;
-      expect(bannerImg).toBeInTheDocument();
-
-      // Simulate image load error
-      await act(async () => {
-        bannerImg.dispatchEvent(new Event('error'));
-      });
-
-      // Parent container should be hidden
-      const bannerBg = document.querySelector('.kiosk-banner-bg') as HTMLElement;
-      expect(bannerBg.style.display).toBe('none');
-    });
-  });
-
-  describe('Kiosk-specific styling', () => {
-    it('shows plus icon on request button', async () => {
-      setupDefaultMocks();
-
-      render(<KioskDisplayPage />);
-
-      await screen.findByText('Test Event');
-
-      const button = screen.getByRole('button', { name: /request a song/i });
-      expect(button.querySelector('svg')).toBeInTheDocument();
-    });
-
-    it('applies cursor:none to global styles', async () => {
-      setupDefaultMocks();
-
-      render(<KioskDisplayPage />);
-
-      await screen.findByText('Test Event');
-
-      // Check that the global style tag contains cursor: none
-      const styleTags = document.querySelectorAll('style');
-      const hasNoCursor = Array.from(styleTags).some(
-        (tag) => tag.textContent?.includes('cursor: none') || tag.textContent?.includes('cursor:none')
-      );
-      expect(hasNoCursor).toBe(true);
-    });
-  });
-
   describe('Error display', () => {
     it('shows "Event Expired" for 410', async () => {
       vi.mocked(api.getKioskDisplay).mockRejectedValue(new ApiError('Expired', 410));
@@ -880,8 +751,8 @@ describe('KioskDisplayPage', () => {
 
       render(<KioskDisplayPage />);
 
-      await screen.findByText('Event Expired');
-      expect(screen.getByText(/no longer accepting requests/i)).toBeInTheDocument();
+      await screen.findByText('Event Unavailable');
+      expect(screen.getByText(/expired/i)).toBeInTheDocument();
     });
 
     it('shows "Event Not Found" for 404', async () => {
@@ -891,8 +762,8 @@ describe('KioskDisplayPage', () => {
 
       render(<KioskDisplayPage />);
 
-      await screen.findByText('Event Not Found');
-      expect(screen.getByText(/does not exist/i)).toBeInTheDocument();
+      await screen.findByText('Kiosk Not Paired');
+      expect(screen.getByText(/not paired with an active event/i)).toBeInTheDocument();
     });
 
     it('shows generic error for non-API errors on initial load', async () => {
@@ -902,7 +773,7 @@ describe('KioskDisplayPage', () => {
 
       render(<KioskDisplayPage />);
 
-      await screen.findByText('Error');
+      await screen.findByText('Event Unavailable');
     });
   });
 
@@ -916,7 +787,7 @@ describe('KioskDisplayPage', () => {
 
       render(<KioskDisplayPage />);
 
-      expect(screen.getByText('Loading...')).toBeInTheDocument();
+      expect(screen.getByText('Loading kiosk...')).toBeInTheDocument();
     });
   });
 

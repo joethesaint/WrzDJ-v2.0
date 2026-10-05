@@ -7,14 +7,14 @@ import { api, ApiError, KioskDisplay, NowPlayingInfo, PlayHistoryItem, PUBLIC_PA
 import { useEventStream } from '@/lib/use-event-stream';
 import { usePollingLoop } from '@/lib/usePollingLoop';
 import { RequestModal } from './components/RequestModal';
+
 const AUTO_SCROLL_INTERVAL = 5000; // 5 seconds between auto-scrolls
-// Accepted-queue growing-window: start at 100 and grow by this step each refresh
-// (clamped to PUBLIC_PAGE_MAX) when the server reports more accepted requests.
 const PUBLIC_PAGE_MAX_INITIAL = 100;
 const SESSION_CHECK_INTERVAL = 10_000; // 10 seconds between kiosk session checks
 const SESSION_TOKEN_KEY = 'kiosk_session_token';
 const PAIR_CODE_KEY = 'kiosk_pair_code';
 const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
+
 function safeColor(c: string | undefined, fallback: string): string {
   return c && HEX_COLOR_RE.test(c) ? c : fallback;
 }
@@ -28,8 +28,65 @@ function withAlpha(hex: string, a: number): string {
   return `rgba(${r},${g},${b},${a})`;
 }
 
-const ACCENT_CYAN = '#00f0ff';
-const ACCENT_MAGENTA = '#ff2bd6';
+// ── Monochrome Studio (Locked by Director Joe) ─────────────────────────────
+const MONOCHROME_THEME = {
+  name: 'Monochrome Studio',
+  accent: '#ffffff',
+  accentSec: '#a3a3a3',
+  bgGradient: 'radial-gradient(ellipse at 50% 15%, #18191c 0%, #0d0e11 70%, #050608 100%)',
+  panelBg: 'rgba(20, 22, 26, 0.78)',
+  panelBorder: 'rgba(255, 255, 255, 0.12)',
+  glow: 'rgba(255, 255, 255, 0.25)',
+  liveDot: '#ffffff',
+};
+
+// Clean 2D Vector SVGs (Strictly zero emojis)
+function Vinyl2DPlaceholder({ size = 180 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ flexShrink: 0 }}
+      aria-label="2D Vinyl Disc"
+    >
+      <circle cx="50" cy="50" r="48" fill="#121316" stroke="rgba(255,255,255,0.18)" strokeWidth="1.5" />
+      <circle cx="50" cy="50" r="42" stroke="rgba(255,255,255,0.06)" strokeWidth="0.8" />
+      <circle cx="50" cy="50" r="36" stroke="rgba(255,255,255,0.06)" strokeWidth="0.8" />
+      <circle cx="50" cy="50" r="30" stroke="rgba(255,255,255,0.06)" strokeWidth="0.8" />
+      <circle cx="50" cy="50" r="24" stroke="rgba(255,255,255,0.06)" strokeWidth="0.8" />
+      <circle cx="50" cy="50" r="18" fill="#1f2024" stroke="#ffffff" strokeWidth="1.5" />
+      <circle cx="50" cy="50" r="15" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="0.6" />
+      <circle cx="50" cy="50" r="4.5" fill="#090a0d" stroke="rgba(255,255,255,0.3)" strokeWidth="1" />
+      {/* 2D Tonearm */}
+      <line x1="88" y1="12" x2="68" y2="44" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="88" cy="12" r="3" fill="rgba(255,255,255,0.6)" />
+      <rect x="65" y="42" width="6" height="4" rx="1" fill="#ffffff" transform="rotate(-30 68 44)" />
+    </svg>
+  );
+}
+
+function Signal2DIcon({ size = 16, color = '#fff' }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4.93 19.07a10 10 0 0 1 0-14.14" />
+      <path d="M7.76 16.24a6 6 0 0 1 0-8.48" />
+      <circle cx="12" cy="12" r="2" fill={color} />
+      <path d="M16.24 7.76a6 6 0 0 1 0 8.48" />
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+    </svg>
+  );
+}
+
+function Upvote2DIcon({ size = 14, color = '#fff' }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="18 15 12 9 6 15" />
+    </svg>
+  );
+}
 
 export default function KioskDisplayPage() {
   const params = useParams();
@@ -62,16 +119,11 @@ export default function KioskDisplayPage() {
   // Track whether initial load succeeded (ref avoids stale closure in useCallback)
   const hasLoadedRef = useRef(false);
 
-  // Automatic growing window for the accepted queue (#411 model): always fetch
-  // offset=0 with the current limit, and grow the limit gradually across refreshes
-  // when the server reports more accepted requests than we've loaded. The ref keeps
-  // the polling/SSE callbacks reading the current value without re-creating loadDisplay.
+  // Automatic growing window for the accepted queue
   const [displayLimit, setDisplayLimit] = useState(PUBLIC_PAGE_MAX_INITIAL);
   const displayLimitRef = useRef(displayLimit);
   displayLimitRef.current = displayLimit;
 
-  // Drops stale loadDisplay responses (polling + SSE can overlap) so an older
-  // fetch can't overwrite newer queue data or apply a stale limit-growth step.
   const loadSeqRef = useRef(0);
 
   // Load kiosk display data and StageLinQ data
@@ -84,19 +136,14 @@ export default function KioskDisplayPage() {
         api.getNowPlaying(code).catch((): undefined => undefined),
         api.getPlayHistory(code).catch((): undefined => undefined),
       ]);
-      // Drop this response if a newer loadDisplay started while we awaited.
       if (seq !== loadSeqRef.current) return true;
       setDisplay(kioskData);
-      // Grow the window for the NEXT refresh if the server has more accepted
-      // requests than the page we just loaded (clamped to PUBLIC_PAGE_MAX).
       if (
         kioskData.accepted_queue_total > kioskData.accepted_queue.length &&
         displayLimitRef.current < PUBLIC_PAGE_MAX
       ) {
         setDisplayLimit(Math.min(limit + PUBLIC_PAGE_MAX_INITIAL, PUBLIC_PAGE_MAX));
       }
-      // Only update stagelinq now-playing when the fetch succeeded;
-      // on transient network errors (undefined), preserve the previous value
       if (nowPlayingData !== undefined) {
         setStagelinqNowPlaying(nowPlayingData);
       }
@@ -105,30 +152,25 @@ export default function KioskDisplayPage() {
       }
       setError(null);
       hasLoadedRef.current = true;
-      return true; // Continue polling
+      return true;
     } catch (err) {
       if (err instanceof ApiError) {
-        // Only show error UI on terminal errors or if we have no display data yet;
-        // on transient errors with existing data, silently retry to avoid flickering
         if (err.status === 404 || err.status === 410) {
           setError({ message: err.message, status: err.status });
           return false;
         }
       }
-      // For transient errors: only set error if this is the initial load (no data yet)
       if (!hasLoadedRef.current) {
         setError({ message: 'Event not found or expired', status: 0 });
       }
-      return true; // Continue polling for transient errors
+      return true;
     } finally {
       setLoading(false);
     }
   }, [code]);
 
-  // Poll every 10s as fallback (SSE handles real-time updates).
   usePollingLoop(true, loadDisplay, 10_000);
 
-  // SSE: trigger immediate refresh on any real-time event
   const loadDisplayRef = useRef(loadDisplay);
   loadDisplayRef.current = loadDisplay;
   useEventStream(code, {
@@ -139,10 +181,6 @@ export default function KioskDisplayPage() {
     onBridgeStatusChanged: () => { loadDisplayRef.current(); },
   });
 
-  // Register the kiosk's session token with the API client so the request
-  // modal's search/submit calls carry X-Kiosk-Session and bypass the guest
-  // human-verification gate (issue #514). Cleared on unmount so the token never
-  // leaks into a non-kiosk client.
   useEffect(() => {
     const token = typeof window !== 'undefined'
       ? localStorage.getItem(SESSION_TOKEN_KEY)
@@ -151,7 +189,6 @@ export default function KioskDisplayPage() {
     return () => api.setKioskSession(null);
   }, []);
 
-  // Check kiosk session validity — detect unpair
   useEffect(() => {
     const token = typeof window !== 'undefined'
       ? localStorage.getItem(SESSION_TOKEN_KEY)
@@ -161,9 +198,6 @@ export default function KioskDisplayPage() {
     const checkSession = async () => {
       try {
         const assignment = await api.getKioskAssignment(token);
-        // A 200 can still be terminal: the assigned event was deleted (legacy/
-        // edge orphan → 'unassigned') or the pairing lapsed ('expired'). Both
-        // mean this device must re-pair (issue #474).
         if (assignment.status === 'unassigned' || assignment.status === 'expired') {
           localStorage.removeItem(SESSION_TOKEN_KEY);
           localStorage.removeItem(PAIR_CODE_KEY);
@@ -175,7 +209,6 @@ export default function KioskDisplayPage() {
           localStorage.removeItem(PAIR_CODE_KEY);
           router.push('/kiosk-pair');
         }
-        // Other errors (network, 500, etc.) — silently ignore
       }
     };
 
@@ -183,10 +216,8 @@ export default function KioskDisplayPage() {
     return () => clearInterval(intervalId);
   }, [router]);
 
-  // Sticky now-playing effect
   useEffect(() => {
     if (stagelinqNowPlaying) {
-      // New data arrived — show it immediately, cancel any pending fade
       if (staleTimerRef.current) {
         clearTimeout(staleTimerRef.current);
         staleTimerRef.current = null;
@@ -194,7 +225,6 @@ export default function KioskDisplayPage() {
       setLastKnownNowPlaying(stagelinqNowPlaying);
       setNowPlayingFading(false);
     } else if (lastKnownNowPlaying) {
-      // Data went null — start 10s grace, then clear
       if (!staleTimerRef.current) {
         setNowPlayingFading(true);
         staleTimerRef.current = setTimeout(() => {
@@ -206,7 +236,6 @@ export default function KioskDisplayPage() {
     }
   }, [stagelinqNowPlaying, lastKnownNowPlaying]);
 
-  // Cleanup stale timer on unmount
   useEffect(() => {
     return () => {
       if (staleTimerRef.current) {
@@ -215,7 +244,6 @@ export default function KioskDisplayPage() {
     };
   }, []);
 
-  // Kiosk mode protections
   useEffect(() => {
     const preventDefaults = (e: Event) => {
       e.preventDefault();
@@ -231,13 +259,11 @@ export default function KioskDisplayPage() {
     };
   }, []);
 
-  // Detect newly accepted items for animation
   useEffect(() => {
     if (!display) return;
     const currentIds = new Set(display.accepted_queue.map((item) => item.id));
     const prev = prevAcceptedIdsRef.current;
 
-    // Find IDs that are in current but not in previous
     const fresh = new Set<number>();
     for (const id of currentIds) {
       if (!prev.has(id)) fresh.add(id);
@@ -245,1004 +271,250 @@ export default function KioskDisplayPage() {
 
     if (fresh.size > 0) {
       setNewItemIds(fresh);
-      // Remove animation class after animation completes
       const timer = setTimeout(() => setNewItemIds(new Set()), 800);
-      prevAcceptedIdsRef.current = currentIds;
       return () => clearTimeout(timer);
     }
-
     prevAcceptedIdsRef.current = currentIds;
-  }, [display?.accepted_queue]);
+  }, [display]);
 
-  // Auto-scroll queue list in display-only mode
   useEffect(() => {
     if (!display?.kiosk_display_only) return;
+    const el = queueListRef.current;
+    if (!el) return;
 
-    const interval = setInterval(() => {
-      const el = queueListRef.current;
+    let direction = 1;
+    const scrollStep = () => {
       if (!el) return;
+      const maxScroll = el.scrollHeight - el.clientHeight;
+      if (maxScroll <= 0) return;
 
-      // If near the bottom, scroll back to top
-      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 10) {
-        el.scrollTo({ top: 0, behavior: 'smooth' });
-      } else {
-        el.scrollBy({ top: 85, behavior: 'smooth' });
-      }
-    }, AUTO_SCROLL_INTERVAL);
+      if (el.scrollTop >= maxScroll) direction = -1;
+      else if (el.scrollTop <= 0) direction = 1;
 
+      el.scrollBy({ top: direction * 80, behavior: 'smooth' });
+    };
+
+    const interval = setInterval(scrollStep, AUTO_SCROLL_INTERVAL);
     return () => clearInterval(interval);
   }, [display?.kiosk_display_only]);
 
   if (loading) {
     return (
-      <div className="kiosk-container">
-        <div className="loading">Loading...</div>
+      <div className="kiosk-loading">
+        <div className="loading-spinner" />
+        <p>Loading kiosk...</p>
+        <style jsx>{`
+          .kiosk-loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: #000;
+            color: #fff;
+            font-family: sans-serif;
+            gap: 16px;
+          }
+          .loading-spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid rgba(255,255,255,0.15);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+          }
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
       </div>
     );
   }
 
   if (error || !display) {
-    const is410 = error?.status === 410;
-    const is404 = error?.status === 404;
-
+    const isUnpaired = error?.status === 404;
     return (
-      <div className="kiosk-container">
-        <div className="kiosk-error">
-          <h1>{is410 ? 'Event Expired' : is404 ? 'Event Not Found' : 'Error'}</h1>
-          <p>
-            {is410
-              ? 'This event has ended and is no longer accepting requests.'
-              : is404
-                ? 'This event does not exist.'
-                : error?.message || 'This event may have expired.'}
-          </p>
-        </div>
+      <div className="kiosk-error">
+        <h1>{isUnpaired ? 'Kiosk Not Paired' : 'Event Unavailable'}</h1>
+        <p>
+          {isUnpaired
+            ? 'This kiosk screen is not paired with an active event.'
+            : (error?.message || 'Unable to load event.')}
+        </p>
+        <button onClick={() => router.push('/kiosk-pair')} className="kiosk-pair-btn">
+          Go to Pairing Screen
+        </button>
+        <style jsx>{`
+          .kiosk-error {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: #000;
+            color: #fff;
+            font-family: sans-serif;
+            gap: 16px;
+            text-align: center;
+            padding: 24px;
+          }
+          h1 { font-size: 32px; font-weight: 800; margin: 0; }
+          p { color: rgba(255,255,255,0.6); max-width: 420px; margin: 0; }
+          .kiosk-pair-btn {
+            margin-top: 12px;
+            padding: 12px 24px;
+            background: #fff;
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+          }
+        `}</style>
       </div>
     );
   }
 
-  const bannerAccent = safeColor(display.banner_colors?.[0], '#3b82f6');
+  const nowPlaying = display.now_playing_hidden ? null : (stagelinqNowPlaying || lastKnownNowPlaying || display.now_playing);
+  const isLive = !!stagelinqNowPlaying && stagelinqNowPlaying.source !== 'manual' && stagelinqNowPlaying.bridge_connected !== false;
   const queue = display.accepted_queue;
-  // True accepted-queue size (before pagination). `queue` is only the loaded
-  // page, so use this for the headline count and a "showing X of Y" indicator.
-  const acceptedTotal = display.accepted_queue_total;
+  const acceptedTotal = display.accepted_queue_total ?? queue.length;
   const hasMoreThanShown = acceptedTotal > queue.length;
-  const maxVotes = Math.max(1, ...queue.map((r) => r.vote_count));
-  const totalVotes = queue.reduce((s, r) => s + r.vote_count, 0);
-
-  // Resolve now-playing with sticky behavior
-  const isHidden = display.now_playing_hidden;
-  const stickyNowPlaying = lastKnownNowPlaying ?? stagelinqNowPlaying;
-  const nowPlaying = isHidden ? null : (stickyNowPlaying || (display.now_playing ? {
-    title: display.now_playing.title,
-    artist: display.now_playing.artist,
-    album_art_url: display.now_playing.artwork_url,
-    source: 'request',
-  } : null));
-  const isLive = stickyNowPlaying?.source != null && stickyNowPlaying.source !== 'manual' && stickyNowPlaying.source !== 'request';
-
-  // BPM/key from request-based now playing (bridge source doesn't expose these)
-  const nowPlayingBpm = display.now_playing?.bpm;
-  const nowPlayingKey = display.now_playing?.musical_key;
+  const maxVotes = queue.length > 0 ? Math.max(...queue.map((item) => item.vote_count)) : 0;
+  const bannerAccent = safeColor(display.banner_colors?.accent, MONOCHROME_THEME.accent);
 
   return (
     <>
-      <style jsx global>{`
-        * {
-          user-select: none;
-          -webkit-user-select: none;
-          -webkit-touch-callout: none;
-          cursor: none;
-        }
-        body {
-          overflow: hidden;
-          margin: 0;
-        }
+      <div className="kiosk-container">
+        {/* Subtle Ambient Radial Glow */}
+        <div className="kiosk-ambient-glow" />
 
-        /* ── Container ── */
-        .kiosk-container {
-          height: 100vh;
-          background: var(--kiosk-bg, linear-gradient(135deg, #1a1a2e 0%, #16213e 100%));
-          padding: 40px;
-          display: flex;
-          flex-direction: column;
-          overflow: hidden;
-          position: relative;
-          font-family: var(--font-display, 'Plus Jakarta Sans'), system-ui, sans-serif;
-          color: #fff;
-        }
-
-        /* ── Banner background with fade ── */
-        .kiosk-banner-bg {
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 60%;
-          z-index: 0;
-          overflow: hidden;
-          pointer-events: none;
-        }
-        .kiosk-banner-bg img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          display: block;
-          filter: saturate(0.55) brightness(0.7);
-        }
-        .kiosk-banner-fade {
-          position: absolute;
-          inset: 0;
-          background: linear-gradient(180deg, transparent 0%, transparent 30%, var(--kiosk-bg, #1a1a2e) 100%);
-        }
-
-        /* ── Header ── */
-        .kiosk-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          margin-bottom: 32px;
-          position: relative;
-          z-index: 1;
-        }
-        .kiosk-live-label {
-          font-family: var(--font-mono, 'JetBrains Mono'), ui-monospace, monospace;
-          font-size: 16px;
-          letter-spacing: 4px;
-          color: ${withAlpha(ACCENT_CYAN, 0.9)};
-          font-weight: 700;
-          text-transform: uppercase;
-          margin-bottom: 12px;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-        .kiosk-live-dot {
-          display: inline-block;
-          width: 9px;
-          height: 9px;
-          border-radius: 50%;
-          background: ${ACCENT_CYAN};
-          box-shadow: 0 0 14px ${ACCENT_CYAN};
-          animation: kiosk-pulse 1.6s ease-in-out infinite;
-        }
-        .kiosk-header-left {
-          flex: 1;
-          min-width: 0;
-        }
-        .kiosk-event-name {
-          font-size: 76px;
-          font-weight: 800;
-          letter-spacing: -2.4px;
-          line-height: 1;
-          margin: 0;
-          text-shadow: 0 4px 30px rgba(0,0,0,0.5);
-          font-family: var(--font-display, 'Plus Jakarta Sans'), -apple-system, sans-serif;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-        .kiosk-stats {
-          display: flex;
-          gap: 12px;
-          margin-top: 22px;
-        }
-        .kiosk-stat {
-          padding: 10px 18px;
-          border-radius: 10px;
-          border: 1px solid rgba(255,255,255,0.1);
-          display: flex;
-          flex-direction: column;
-          align-items: flex-start;
-          min-width: 80px;
-          background: rgba(0,0,0,0.2);
-        }
-        .kiosk-stat-value {
-          font-family: var(--font-mono, 'JetBrains Mono'), monospace;
-          font-size: 26px;
-          font-weight: 800;
-          line-height: 1;
-          font-variant-numeric: tabular-nums;
-        }
-        .kiosk-stat-label {
-          font-family: var(--font-mono, 'JetBrains Mono'), monospace;
-          font-size: 11px;
-          color: rgba(255,255,255,0.55);
-          letter-spacing: 1.8px;
-          margin-top: 6px;
-          font-weight: 600;
-        }
-        .kiosk-closed-banner {
-          background: rgba(239, 68, 68, 0.35);
-          border: 2px solid rgba(239, 68, 68, 0.5);
-          color: #fca5a5;
-          padding: 1rem 2rem;
-          border-radius: 1rem;
-          font-size: 1.25rem;
-          font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.1em;
-        }
-        .kiosk-qr {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-        }
-        .kiosk-qr-bg {
-          background: #fff;
-          padding: 12px;
-          border-radius: 14px;
-        }
-        .kiosk-qr-label {
-          font-size: 14px;
-          font-weight: 600;
-          color: #fff;
-          margin-top: 10px;
-          text-align: center;
-          max-width: 160px;
-          letter-spacing: 0.2px;
-        }
-
-        /* ── 3-column grid ── */
-        .kiosk-main {
-          flex: 1;
-          display: grid;
-          grid-template-columns: 1fr 1.3fr 1fr;
-          gap: 28px;
-          min-height: 0;
-          position: relative;
-          z-index: 1;
-        }
-        .kiosk-main-single {
-          grid-template-columns: 1.3fr 1fr;
-        }
-
-        /* ── Glass panels ── */
-        .kiosk-panel {
-          background: rgba(255,255,255,0.06);
-          border: 1px solid rgba(255,255,255,0.1);
-          border-radius: 24px;
-          padding: 26px;
-          display: flex;
-          flex-direction: column;
-          backdrop-filter: blur(8px);
-          -webkit-backdrop-filter: blur(8px);
-          min-height: 0;
-          position: relative;
-          overflow: hidden;
-        }
-        .kiosk-panel-label {
-          font-family: var(--font-mono, 'JetBrains Mono'), monospace;
-          font-size: 14px;
-          font-weight: 700;
-          letter-spacing: 2.4px;
-          text-transform: uppercase;
-          margin-bottom: 18px;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        /* ── Now Playing ── */
-        .now-playing-section {
-          transition: opacity 1s ease-out;
-        }
-        .now-playing-section.fading {
-          opacity: 0.5;
-        }
-        .now-playing-content {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: 24px;
-        }
-        .now-playing-art {
-          width: 240px;
-          height: 240px;
-          border-radius: 16px;
-          object-fit: cover;
-          box-shadow: 0 12px 32px rgba(0,0,0,0.45);
-          flex-shrink: 0;
-        }
-        .now-playing-placeholder {
-          width: 240px;
-          height: 240px;
-          border-radius: 16px;
-          background: rgba(255,255,255,0.08);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-          box-shadow: 0 12px 32px rgba(0,0,0,0.45);
-        }
-        .now-playing-title {
-          font-size: 32px;
-          font-weight: 800;
-          letter-spacing: -0.6px;
-          line-height: 1.1;
-          text-align: center;
-          margin: 0;
-          max-width: 320px;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-        }
-        .now-playing-artist {
-          font-size: 22px;
-          color: rgba(255,255,255,0.55);
-          text-align: center;
-          margin: 0;
-        }
-        .now-playing-chips {
-          display: flex;
-          gap: 14px;
-        }
-        .now-playing-chip {
-          padding: 6px 12px;
-          border-radius: 99px;
-          border: 1px solid rgba(255,255,255,0.1);
-          font-family: var(--font-mono, 'JetBrains Mono'), monospace;
-          font-size: 12px;
-          font-weight: 700;
-          letter-spacing: 1.2px;
-          color: rgba(255,255,255,0.55);
-        }
-
-        .live-badge {
-          background: #ef4444;
-          color: #fff;
-          font-size: 0.65rem;
-          padding: 0.2rem 0.5rem;
-          border-radius: 0.25rem;
-          font-weight: bold;
-          animation: kiosk-pulse 2s ease-in-out infinite;
-          margin-left: 4px;
-        }
-
-        /* ── EQ Bars ── */
-        .kiosk-eq-bars {
-          display: flex;
-          align-items: flex-end;
-          gap: 4px;
-          height: 56px;
-        }
-        .kiosk-eq-bar {
-          width: 6px;
-          height: 40%;
-          border-radius: 3px;
-          background: linear-gradient(to top, ${ACCENT_CYAN}, ${withAlpha(ACCENT_CYAN, 0.6)});
-          transform-origin: bottom;
-        }
-
-        /* ── Queue ── */
-        .queue-header {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          margin-bottom: 18px;
-        }
-        .queue-track-count {
-          font-family: var(--font-mono, 'JetBrains Mono'), monospace;
-          font-size: 12px;
-          color: rgba(255,255,255,0.35);
-          letter-spacing: 2px;
-        }
-        .queue-list {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          overflow-y: auto;
-          flex: 1;
-          min-height: 0;
-        }
-        .queue-list::-webkit-scrollbar {
-          width: 4px;
-        }
-        .queue-list::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .queue-list::-webkit-scrollbar-thumb {
-          background: rgba(255,255,255,0.15);
-          border-radius: 2px;
-        }
-        .queue-item {
-          position: relative;
-          background: rgba(255,255,255,0.06);
-          border: 1px solid rgba(255,255,255,0.1);
-          border-radius: 14px;
-          padding: 12px 16px;
-          display: flex;
-          align-items: center;
-          gap: 14px;
-          overflow: hidden;
-          /* Keep natural row height so a long accepted queue scrolls instead of
-             squishing: overflow:hidden zeroes the flex auto min-height, so without
-             flex-shrink:0 the column crushes every row to fit (issue #478). */
-          flex-shrink: 0;
-        }
-        .queue-item-top1 {
-          border-color: var(--banner-accent-50, rgba(255,255,255,0.1));
-          box-shadow: 0 0 0 1px var(--banner-accent-30, transparent), 0 8px 32px var(--banner-accent-20, transparent);
-        }
-        .queue-item-top-edge {
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 1px;
-        }
-        .queue-item-vote-bar {
-          position: absolute;
-          left: 0;
-          top: 0;
-          bottom: 0;
-          pointer-events: none;
-        }
-        .queue-item-rank {
-          position: relative;
-          z-index: 1;
-          width: 42px;
-          height: 42px;
-          flex-shrink: 0;
-          border-radius: 10px;
-          font-family: var(--font-mono, 'JetBrains Mono'), monospace;
-          font-weight: 800;
-          font-size: 18px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        .queue-item-art {
-          width: 50px;
-          height: 50px;
-          border-radius: 8px;
-          object-fit: cover;
-          flex-shrink: 0;
-          position: relative;
-          z-index: 1;
-        }
-        .queue-item-placeholder {
-          width: 50px;
-          height: 50px;
-          border-radius: 8px;
-          background: rgba(255,255,255,0.08);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-          position: relative;
-          z-index: 1;
-        }
-        .queue-item-info {
-          flex: 1;
-          min-width: 0;
-          position: relative;
-          z-index: 1;
-        }
-        .queue-item-title {
-          font-size: 22px;
-          font-weight: 700;
-          letter-spacing: -0.3px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .queue-item-artist {
-          font-size: 17px;
-          color: rgba(255,255,255,0.55);
-          margin-top: 2px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .queue-item-nickname {
-          font-size: 12px;
-          color: rgba(255,255,255,0.35);
-          margin-top: 4px;
-          font-family: var(--font-mono, 'JetBrains Mono'), monospace;
-          letter-spacing: 0.5px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .queue-item-votes {
-          position: relative;
-          z-index: 1;
-          display: flex;
-          flex-direction: column;
-          align-items: flex-end;
-          flex-shrink: 0;
-        }
-        .queue-item-vote-num {
-          font-family: var(--font-mono, 'JetBrains Mono'), monospace;
-          font-weight: 800;
-          font-size: 28px;
-          line-height: 1;
-          font-variant-numeric: tabular-nums;
-        }
-        .queue-item-vote-label {
-          font-family: var(--font-mono, 'JetBrains Mono'), monospace;
-          font-size: 10px;
-          color: rgba(255,255,255,0.35);
-          letter-spacing: 2px;
-          margin-top: 4px;
-        }
-        .queue-item-new {
-          animation: slide-in-glow 0.8s ease-out;
-        }
-        .queue-empty {
-          color: rgba(255,255,255,0.35);
-          text-align: center;
-          padding: 2rem;
-          font-size: 18px;
-        }
-
-        /* ── History ── */
-        .history-list {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-          overflow-y: auto;
-          flex: 1;
-          min-height: 0;
-        }
-        .history-list::-webkit-scrollbar {
-          width: 4px;
-        }
-        .history-list::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .history-list::-webkit-scrollbar-thumb {
-          background: rgba(255,255,255,0.15);
-          border-radius: 2px;
-        }
-        .history-item {
-          background: rgba(255,255,255,0.06);
-          border-radius: 12px;
-          padding: 10px 12px;
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-        .history-item-art {
-          width: 44px;
-          height: 44px;
-          border-radius: 8px;
-          object-fit: cover;
-          flex-shrink: 0;
-        }
-        .history-item-placeholder {
-          width: 44px;
-          height: 44px;
-          border-radius: 8px;
-          background: rgba(255,255,255,0.06);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-        }
-        .history-item-info {
-          flex: 1;
-          min-width: 0;
-        }
-        .history-item-title {
-          font-size: 17px;
-          font-weight: 600;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .history-item-artist {
-          font-size: 14px;
-          color: rgba(255,255,255,0.55);
-          margin-top: 1px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .history-empty {
-          color: rgba(255,255,255,0.35);
-          text-align: center;
-          padding: 2rem;
-        }
-        .requested-badge {
-          background: #22c55e;
-          color: #fff;
-          font-size: 0.65rem;
-          padding: 0.2rem 0.5rem;
-          border-radius: 0.25rem;
-          white-space: nowrap;
-          flex-shrink: 0;
-        }
-
-        /* ── CTA Button ── */
-        .request-button {
-          margin-top: 28px;
-          align-self: center;
-          flex-shrink: 0;
-          position: relative;
-          z-index: 1;
-          border: none;
-          color: #0a0a0a;
-          font-family: var(--font-display, 'Plus Jakarta Sans'), sans-serif;
-          font-size: 22px;
-          font-weight: 800;
-          letter-spacing: 0.5px;
-          padding: 20px 56px;
-          border-radius: 999px;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .request-button:hover {
-          transform: scale(1.05);
-        }
-        .request-button:active {
-          transform: scale(0.98);
-        }
-
-        /* ── Animations ── */
-        @keyframes kiosk-eq {
-          from { height: 18%; }
-          to { height: 100%; }
-        }
-        @keyframes kiosk-pulse {
-          0%, 100% { transform: scale(1); opacity: 1; }
-          50% { transform: scale(1.4); opacity: 0.7; }
-        }
-        @keyframes slide-in-glow {
-          0% {
-            transform: translateX(-30px);
-            opacity: 0;
-            box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
-          }
-          30% {
-            opacity: 1;
-            box-shadow: 0 0 20px 4px rgba(34, 197, 94, 0.4);
-          }
-          100% {
-            transform: translateX(0);
-            box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
-          }
-        }
-
-        /* ── Modal styles (used by RequestModal component) ── */
-        .modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0,0,0,0.9);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 1000;
-          padding: 2rem;
-        }
-        .modal-content {
-          background: #1f2937;
-          border-radius: 1.5rem;
-          padding: 2rem;
-          width: 100%;
-          max-width: 500px;
-          max-height: 80vh;
-          overflow-y: auto;
-          transition: max-height 0.2s ease, margin-top 0.2s ease;
-        }
-        .modal-content.keyboard-active {
-          max-width: 700px;
-          max-height: 95vh;
-          overflow-y: auto;
-          padding: 1.25rem;
-          padding-bottom: 280px;
-        }
-        .modal-overlay.keyboard-overlay-active {
-          align-items: flex-start;
-          padding-top: 1rem;
-          padding-left: 1rem;
-          padding-right: 1rem;
-        }
-        .modal-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 1.5rem;
-        }
-        .modal-title {
-          font-size: 1.5rem;
-          font-weight: bold;
-          color: #fff;
-          margin: 0;
-        }
-        .modal-close {
-          background: transparent;
-          border: none;
-          color: #9ca3af;
-          font-size: 2rem;
-          cursor: pointer;
-          line-height: 1;
-        }
-        .search-form {
-          display: flex;
-          gap: 0.5rem;
-          margin-bottom: 1rem;
-        }
-        .search-feedback {
-          margin: 0.5rem 0 1rem;
-          text-align: center;
-          color: #9ca3af;
-          font-size: 1rem;
-        }
-        .search-feedback-error {
-          color: #f87171;
-        }
-        .search-input {
-          flex: 1;
-          background: #374151;
-          border: none;
-          border-radius: 0.5rem;
-          padding: 1rem;
-          color: #fff;
-          font-size: 1rem;
-        }
-        .search-button {
-          background: #3b82f6;
-          border: none;
-          border-radius: 0.5rem;
-          padding: 1rem 1.5rem;
-          color: #fff;
-          font-weight: 500;
-          cursor: pointer;
-        }
-        .search-results {
-          display: flex;
-          flex-direction: column;
-          gap: 0.5rem;
-          max-height: 300px;
-          overflow-y: auto;
-          transition: max-height 0.2s ease;
-        }
-        .search-results-compact {
-          max-height: 50vh;
-        }
-        .search-result-item {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          background: #374151;
-          padding: 0.75rem;
-          border-radius: 0.5rem;
-          border: none;
-          cursor: pointer;
-          text-align: left;
-          width: 100%;
-          color: #fff;
-        }
-        .search-result-item:hover {
-          background: #4b5563;
-        }
-        .confirm-section {
-          text-align: center;
-        }
-        .confirm-song {
-          margin-bottom: 1.5rem;
-        }
-        .confirm-title {
-          font-size: 1.25rem;
-          font-weight: bold;
-          color: #fff;
-          margin: 0 0 0.25rem;
-        }
-        .confirm-artist {
-          color: #9ca3af;
-          margin: 0;
-        }
-        .note-input {
-          width: 100%;
-          background: #374151;
-          border: none;
-          border-radius: 0.5rem;
-          padding: 1rem;
-          color: #fff;
-          font-size: 1rem;
-          margin-bottom: 1rem;
-        }
-        .confirm-buttons {
-          display: flex;
-          gap: 1rem;
-        }
-        .confirm-submit {
-          flex: 1;
-          background: #22c55e;
-          border: none;
-          border-radius: 0.5rem;
-          padding: 1rem;
-          color: #fff;
-          font-weight: bold;
-          font-size: 1.1rem;
-          cursor: pointer;
-        }
-        .confirm-back {
-          background: #374151;
-          border: none;
-          border-radius: 0.5rem;
-          padding: 1rem 1.5rem;
-          color: #fff;
-          cursor: pointer;
-        }
-        .success-message {
-          text-align: center;
-          padding: 2rem;
-        }
-        .success-icon {
-          font-size: 4rem;
-          margin-bottom: 1rem;
-        }
-        .success-text {
-          font-size: 1.5rem;
-          color: #22c55e;
-          font-weight: bold;
-        }
-        .success-vote-count {
-          color: #9ca3af;
-          margin-top: 0.5rem;
-        }
-        .search-result-art {
-          width: 48px;
-          height: 48px;
-          border-radius: 4px;
-          object-fit: cover;
-        }
-        .search-result-placeholder {
-          width: 48px;
-          height: 48px;
-          border-radius: 4px;
-          background: rgba(255,255,255,0.1);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: rgba(255,255,255,0.5);
-        }
-        .search-result-info {
-          flex: 1;
-          min-width: 0;
-        }
-        .search-result-title {
-          font-weight: 500;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-        .search-result-artist {
-          color: #9ca3af;
-          font-size: 0.875rem;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-      `}</style>
-
-      <div
-        className="kiosk-container"
-        style={display.banner_colors ? {
-          '--kiosk-bg': display.banner_kiosk_url
-            ? safeColor(display.banner_colors[0], '#1a1a2e')
-            : `linear-gradient(135deg, ${safeColor(display.banner_colors[0], '#1a1a2e')} 0%, ${safeColor(display.banner_colors[1], '#16213e')} 50%, ${safeColor(display.banner_colors[2], '#0f3460')} 100%)`,
-        } as React.CSSProperties : undefined}
-      >
-        {/* Banner background with gradient fade */}
-        {display.banner_kiosk_url && (
-          <div className="kiosk-banner-bg">
-            <img
-              src={display.banner_kiosk_url}
-              alt=""
-              onError={(e) => {
-                const parent = e.currentTarget.parentElement;
-                if (parent) parent.style.display = 'none';
-              }}
-            />
-            <div className="kiosk-banner-fade" />
+        {/* Top Guidance Header (Clean SVG, No Emojis) */}
+        <div className="kiosk-guidance-strip">
+          <div className="guidance-tag">
+            <Signal2DIcon size={13} color="#fff" />
+            <span>HOW IT WORKS</span>
           </div>
-        )}
+          <div className="guidance-step">
+            <span className="step-num">1</span>
+            <span>Scan QR code with phone</span>
+          </div>
+          <div className="guidance-divider" aria-hidden="true">&rsaquo;</div>
+          <div className="guidance-step">
+            <span className="step-num">2</span>
+            <span>Request songs & upvote queue</span>
+          </div>
+          <div className="guidance-divider" aria-hidden="true">&rsaquo;</div>
+          <div className="guidance-step">
+            <span className="step-num">3</span>
+            <span>Live crowd score on screen</span>
+          </div>
+        </div>
 
-        {/* Header */}
+        {/* Header Bar */}
         <div className="kiosk-header">
           <div className="kiosk-header-left">
             <div className="kiosk-live-label">
               <span className="kiosk-live-dot" />
-              LIVE &middot; WRZDJ
+              <span>LIVE KIOSK DISPLAY</span>
             </div>
             <h1 className="kiosk-event-name">{display.event.name}</h1>
             <div className="kiosk-stats">
               <div className="kiosk-stat">
                 <span className="kiosk-stat-value">{acceptedTotal}</span>
-                <span className="kiosk-stat-label">QUEUE</span>
+                <span className="kiosk-stat-label">REQUESTS</span>
               </div>
               <div className="kiosk-stat">
-                <span className="kiosk-stat-value" style={{ color: bannerAccent }}>{totalVotes}</span>
-                <span className="kiosk-stat-label">VOTES</span>
+                <span className="kiosk-stat-value">{display.requests_open ? 'OPEN' : 'CLOSED'}</span>
+                <span className="kiosk-stat-label">REQUEST LINE</span>
               </div>
             </div>
           </div>
-          {!display.requests_open ? (
-            <div className="kiosk-closed-banner">
-              Requests Closed
-            </div>
-          ) : (
-            <div className="kiosk-qr">
-              <div className="kiosk-qr-bg">
-                <QRCodeSVG value={display.qr_join_url} size={140} />
-              </div>
-              <p className="kiosk-qr-label">Scan to request from phone</p>
-            </div>
+
+          {!display.requests_open && (
+            <div className="kiosk-closed-banner">REQUESTS CLOSED</div>
           )}
         </div>
 
-        {/* Main 3-column grid */}
-        <div className={`kiosk-main ${nowPlaying ? '' : 'kiosk-main-single'}`}>
-          {/* NOW PLAYING */}
+        {/* ── Main Layout: 2-Column Grid (Now Playing Left, Queue Right) ── */}
+        <div className={`kiosk-main${!nowPlaying ? ' kiosk-main-single' : ''}`}>
+          {/* NOW PLAYING HERO (65% Artwork & Track / 35% QR) */}
           {nowPlaying && (
-            <div className={`kiosk-panel now-playing-section ${nowPlayingFading ? 'fading' : ''}`}>
-              <div className="kiosk-panel-label" style={{ color: ACCENT_CYAN }}>
-                <span className="kiosk-live-dot" style={{
-                  width: 7,
-                  height: 7,
-                  background: ACCENT_CYAN,
-                  boxShadow: `0 0 10px ${ACCENT_CYAN}`,
-                }} />
-                NOW PLAYING
+            <div className={`kiosk-panel now-playing-section${nowPlayingFading ? ' fading' : ''}`}>
+              <div className="kiosk-panel-label">
+                <span>NOW PLAYING</span>
                 {isLive && <span className="live-badge">LIVE</span>}
               </div>
-              <div className="now-playing-content">
-                {nowPlaying.album_art_url ? (
-                  <img
-                    src={nowPlaying.album_art_url}
-                    alt={nowPlaying.title}
-                    className="now-playing-art"
-                  />
-                ) : (
-                  <div className="now-playing-placeholder">
-                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M20 4v8.5a3.5 3.5 0 1 1-2-3.163V6l-9 1.5v9a3.5 3.5 0 1 1-2-3.163V5l13-1Z" />
-                    </svg>
+
+              {/* 65% / 35% Split Layout (Council Lock Q3 - 3b) */}
+              <div className="now-playing-hero-grid">
+                {/* 65% Track Information & 2D Vector Artwork */}
+                <div className="now-playing-left-65">
+                  <div className="now-playing-artwork-wrap">
+                    {nowPlaying.album_art_url ? (
+                      <img
+                        src={nowPlaying.album_art_url}
+                        alt={nowPlaying.title}
+                        className="now-playing-art"
+                      />
+                    ) : (
+                      <div className="now-playing-placeholder">
+                        <Vinyl2DPlaceholder size={180} />
+                      </div>
+                    )}
                   </div>
-                )}
-                <div style={{ textAlign: 'center', maxWidth: 320 }}>
-                  <h2 className="now-playing-title">{nowPlaying.title}</h2>
-                  <p className="now-playing-artist">{nowPlaying.artist}</p>
+
+                  <div className="now-playing-meta">
+                    <h2 className="now-playing-title">{nowPlaying.title}</h2>
+                    <p className="now-playing-artist">{nowPlaying.artist}</p>
+                    <div className="now-playing-chips">
+                      <span className="now-playing-chip">STAGE MIX</span>
+                      {nowPlaying.matched_request_id && (
+                        <span className="now-playing-chip requested">CROWD PICK</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                {(nowPlayingBpm || nowPlayingKey) && (
-                  <div className="now-playing-chips">
-                    {nowPlayingBpm && <span className="now-playing-chip">{nowPlayingBpm} BPM</span>}
-                    {nowPlayingKey && <span className="now-playing-chip">KEY {nowPlayingKey}</span>}
+
+                {/* 35% QR Scan Block */}
+                <div className="now-playing-right-35">
+                  <div className="hero-qr-container">
+                    <div className="hero-qr-frame">
+                      <QRCodeSVG value={display.qr_join_url} size={130} />
+                    </div>
+                    <span className="hero-qr-callout">SCAN TO VOTE</span>
+                    <span className="hero-qr-sub">Join on your phone</span>
                   </div>
-                )}
-                <div className="kiosk-eq-bars">
-                  {Array.from({ length: 14 }, (_, i) => (
-                    <div
-                      key={i}
-                      className="kiosk-eq-bar"
-                      style={{
-                        animation: `kiosk-eq ${0.6 + (i % 4) * 0.15}s ${i * 0.07}s infinite alternate ease-in-out`,
-                      }}
-                    />
-                  ))}
                 </div>
               </div>
+
+              {/* EQ audio visualizer bars */}
+              <div className="kiosk-eq-bars">
+                {Array.from({ length: 16 }, (_, i) => (
+                  <div
+                    key={i}
+                    className="kiosk-eq-bar"
+                    style={{
+                      animation: `kiosk-eq ${0.6 + (i % 4) * 0.15}s ${i * 0.07}s infinite alternate ease-in-out`,
+                    }}
+                  />
+                ))}
+              </div>
+
+              {/* RESERVED VIBE METER SPOT (Council Lock Q4 / D8): Fixed 64px, empty until 1B */}
+              <div
+                className="kiosk-reserved-meter-spot"
+                data-testid="kiosk-reserved-meter-spot"
+                data-slot="vibe-meter"
+                aria-hidden="true"
+              />
             </div>
           )}
 
-          {/* QUEUE (leaderboard) */}
-          <div className="kiosk-panel">
+          {/* QUEUE PANEL (Includes Option 2b Recently Played at bottom) */}
+          <div className="kiosk-panel queue-panel">
             <div className="queue-header">
-              <div className="kiosk-panel-label" style={{ color: ACCENT_MAGENTA, marginBottom: 0 }}>
+              <div className="kiosk-panel-label" style={{ marginBottom: 0 }}>
                 QUEUE
               </div>
               <div style={{ flex: 1 }} />
@@ -1252,47 +524,27 @@ export default function KioskDisplayPage() {
                   : `${acceptedTotal} TRACKS`}
               </span>
             </div>
+
             {queue.length > 0 ? (
               <div className="queue-list" ref={queueListRef}>
                 {queue.map((item, i) => {
                   const pct = maxVotes > 0 ? (item.vote_count / maxVotes) * 100 : 0;
                   const isTop3 = i < 3;
-                  const rankColor = i === 0
-                    ? bannerAccent
-                    : i === 1
-                      ? '#fff'
-                      : i === 2
-                        ? ACCENT_MAGENTA
-                        : 'rgba(255,255,255,0.35)';
+                  const rankColor = i === 0 ? '#ffffff' : i === 1 ? '#e5e7eb' : i === 2 ? '#9ca3af' : 'rgba(255,255,255,0.35)';
 
                   return (
                     <div
                       key={item.id}
                       className={`queue-item${i === 0 ? ' queue-item-top1' : ''}${newItemIds.has(item.id) ? ' queue-item-new' : ''}`}
-                      style={i === 0 ? {
-                        background: withAlpha(bannerAccent, 0.12),
-                        '--banner-accent-50': withAlpha(bannerAccent, 0.5),
-                        '--banner-accent-30': withAlpha(bannerAccent, 0.3),
-                        '--banner-accent-20': withAlpha(bannerAccent, 0.2),
-                      } as React.CSSProperties : undefined}
                     >
                       {/* Vote bar fill */}
                       <div
                         className="queue-item-vote-bar"
                         style={{
                           width: `${pct}%`,
-                          background: `linear-gradient(90deg, ${withAlpha(isTop3 ? bannerAccent : ACCENT_MAGENTA, 0.18)}, transparent 90%)`,
+                          background: 'linear-gradient(90deg, rgba(255,255,255,0.12), transparent 90%)',
                         }}
                       />
-                      {/* Top-edge glow for #1 */}
-                      {i === 0 && (
-                        <div
-                          className="queue-item-top-edge"
-                          style={{
-                            background: `linear-gradient(90deg, transparent, ${bannerAccent}, transparent)`,
-                          }}
-                        />
-                      )}
 
                       {/* Rank badge */}
                       <div
@@ -1301,22 +553,10 @@ export default function KioskDisplayPage() {
                           background: isTop3 ? rankColor : 'transparent',
                           color: isTop3 ? '#000' : 'rgba(255,255,255,0.35)',
                           border: isTop3 ? 'none' : '1px solid rgba(255,255,255,0.1)',
-                          boxShadow: i === 0 ? `0 0 18px ${withAlpha(bannerAccent, 0.6)}` : 'none',
                         }}
                       >
                         {i + 1}
                       </div>
-
-                      {/* Artwork */}
-                      {item.artwork_url ? (
-                        <img src={item.artwork_url} alt={item.title} className="queue-item-art" />
-                      ) : (
-                        <div className="queue-item-placeholder">
-                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M20 4v8.5a3.5 3.5 0 1 1-2-3.163V6l-9 1.5v9a3.5 3.5 0 1 1-2-3.163V5l13-1Z" />
-                          </svg>
-                        </div>
-                      )}
 
                       {/* Track info */}
                       <div className="queue-item-info">
@@ -1329,15 +569,10 @@ export default function KioskDisplayPage() {
 
                       {/* Vote count */}
                       <div className="queue-item-votes">
-                        <span
-                          className="queue-item-vote-num"
-                          style={{
-                            color: isTop3 ? rankColor : '#fff',
-                            textShadow: i === 0 ? `0 0 20px ${withAlpha(bannerAccent, 0.6)}` : 'none',
-                          }}
-                        >
-                          {item.vote_count}
-                        </span>
+                        <div className="queue-item-votes-row">
+                          <Upvote2DIcon size={14} color="#fff" />
+                          <span className="queue-item-vote-num">{item.vote_count}</span>
+                        </div>
                         <span className="queue-item-vote-label">VOTES</span>
                       </div>
                     </div>
@@ -1350,41 +585,32 @@ export default function KioskDisplayPage() {
                 <p>Be the first to request!</p>
               </div>
             )}
-          </div>
 
-          {/* RECENTLY PLAYED */}
-          <div className="kiosk-panel">
-            <div className="kiosk-panel-label" style={{ color: '#a78bfa' }}>
-              RECENTLY PLAYED
-            </div>
-            {playHistory.length > 0 ? (
-              <div className="history-list">
-                {playHistory.map((item) => (
-                  <div key={item.id} className="history-item">
-                    {item.album_art_url ? (
-                      <img src={item.album_art_url} alt={item.title} className="history-item-art" />
-                    ) : (
-                      <div className="history-item-placeholder">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M20 4v8.5a3.5 3.5 0 1 1-2-3.163V6l-9 1.5v9a3.5 3.5 0 1 1-2-3.163V5l13-1Z" />
-                        </svg>
-                      </div>
-                    )}
-                    <div className="history-item-info">
-                      <div className="history-item-title">{item.title}</div>
-                      <div className="history-item-artist">{item.artist}</div>
+            {/* ── OPTION 2B: RECENTLY PLAYED COMPACT STRIP (Council Lock Q2) ── */}
+            <div className="kiosk-just-played-panel" data-testid="kiosk-just-played-panel">
+              <div className="kiosk-panel-label kiosk-just-played-title">
+                RECENTLY PLAYED
+              </div>
+              {playHistory.length > 0 ? (
+                <div className="kiosk-just-played-items">
+                  {playHistory.slice(0, 3).map((item) => (
+                    <div key={item.id} className="kiosk-just-played-row">
+                      <span className="kiosk-just-played-dot" aria-hidden="true">&bull;</span>
+                      <span className="kiosk-just-played-track">{item.title}</span>
+                      <span className="kiosk-just-played-sep" aria-hidden="true">&mdash;</span>
+                      <span className="kiosk-just-played-artist">{item.artist}</span>
+                      {item.matched_request_id && (
+                        <span className="requested-badge">Requested</span>
+                      )}
                     </div>
-                    {item.matched_request_id && (
-                      <span className="requested-badge">Requested</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="history-empty">
-                <p>No songs played yet.</p>
-              </div>
-            )}
+                  ))}
+                </div>
+              ) : (
+                <div className="history-empty">
+                  <p>No songs played yet.</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1393,15 +619,12 @@ export default function KioskDisplayPage() {
           <button
             className="request-button"
             onClick={() => setShowRequestModal(true)}
-            style={{
-              background: `linear-gradient(90deg, ${bannerAccent}, ${ACCENT_MAGENTA})`,
-              boxShadow: `0 16px 50px ${withAlpha(bannerAccent, 0.5)}, 0 0 0 1px rgba(255,255,255,0.15) inset`,
-            }}
           >
             <svg width="18" height="18" viewBox="0 0 14 14" fill="none">
               <path d="M7 1.5v11M1.5 7h11" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
             </svg>
-            REQUEST A SONG
+            <span>REQUEST A SONG</span>
+            <span className="touch-prompt-pill">TOUCH SCREEN</span>
           </button>
         )}
       </div>
@@ -1413,6 +636,626 @@ export default function KioskDisplayPage() {
           onRequestsClosed={() => loadDisplay()}
         />
       )}
+
+      {/* ── Styles (Scoped JSX) ── */}
+      <style jsx global>{`
+        *, *::before, *::after {
+          box-sizing: border-box;
+          user-select: none;
+          -webkit-user-select: none;
+        }
+        body, html {
+          margin: 0;
+          padding: 0;
+          background: #000000;
+          color: #ffffff;
+          overflow: hidden;
+          width: 100vw;
+          height: 100vh;
+        }
+      `}</style>
+
+      <style jsx>{`
+        .kiosk-container {
+          width: 100vw;
+          height: 100vh;
+          background: #050608;
+          background-image: ${MONOCHROME_THEME.bgGradient};
+          color: #ffffff;
+          display: flex;
+          flex-direction: column;
+          padding: 24px 36px 30px;
+          overflow: hidden;
+          font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+          position: relative;
+        }
+
+        .kiosk-ambient-glow {
+          position: absolute;
+          top: 0;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 900px;
+          height: 250px;
+          background: radial-gradient(ellipse at center, rgba(255,255,255,0.06) 0%, transparent 70%);
+          pointer-events: none;
+          z-index: 0;
+        }
+
+        /* ── Top Guidance Strip ── */
+        .kiosk-guidance-strip {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          padding: 8px 16px;
+          background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 10px;
+          margin-bottom: 20px;
+          font-size: 13px;
+          color: rgba(255,255,255,0.65);
+          position: relative;
+          z-index: 1;
+        }
+        .guidance-tag {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-family: var(--font-mono, monospace);
+          font-weight: 700;
+          letter-spacing: 1.5px;
+          color: #ffffff;
+          font-size: 11px;
+        }
+        .guidance-step {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .step-num {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          background: rgba(255,255,255,0.12);
+          color: #fff;
+          font-size: 11px;
+          font-weight: 700;
+        }
+        .guidance-divider {
+          color: rgba(255,255,255,0.25);
+          font-size: 16px;
+        }
+
+        /* ── Header Bar ── */
+        .kiosk-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          margin-bottom: 24px;
+          position: relative;
+          z-index: 1;
+        }
+        .kiosk-live-label {
+          font-family: var(--font-mono, monospace);
+          font-size: 13px;
+          letter-spacing: 3px;
+          color: #ffffff;
+          font-weight: 700;
+          text-transform: uppercase;
+          margin-bottom: 8px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .kiosk-live-dot {
+          display: inline-block;
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: #ffffff;
+          box-shadow: 0 0 12px #ffffff;
+          animation: kiosk-pulse 1.8s ease-in-out infinite;
+        }
+        .kiosk-header-left {
+          flex: 1;
+          min-width: 0;
+        }
+        .kiosk-event-name {
+          font-size: 52px;
+          font-weight: 800;
+          letter-spacing: -1.5px;
+          line-height: 1.05;
+          margin: 0;
+          text-shadow: 0 4px 24px rgba(0,0,0,0.6);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .kiosk-stats {
+          display: flex;
+          gap: 12px;
+          margin-top: 14px;
+        }
+        .kiosk-stat {
+          padding: 8px 14px;
+          border-radius: 8px;
+          border: 1px solid rgba(255,255,255,0.1);
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          min-width: 80px;
+          background: rgba(255,255,255,0.03);
+        }
+        .kiosk-stat-value {
+          font-family: var(--font-mono, monospace);
+          font-size: 20px;
+          font-weight: 800;
+          line-height: 1;
+        }
+        .kiosk-stat-label {
+          font-family: var(--font-mono, monospace);
+          font-size: 10px;
+          color: rgba(255,255,255,0.5);
+          letter-spacing: 1.5px;
+          margin-top: 4px;
+          font-weight: 600;
+        }
+        .kiosk-closed-banner {
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          color: #fff;
+          padding: 0.8rem 1.6rem;
+          border-radius: 0.8rem;
+          font-size: 1.1rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.1em;
+        }
+
+        /* ── Main 2-Column Grid ── */
+        .kiosk-main {
+          flex: 1;
+          display: grid;
+          grid-template-columns: 1.2fr 1fr;
+          gap: 24px;
+          min-height: 0;
+          position: relative;
+          z-index: 1;
+        }
+        .kiosk-main-single {
+          grid-template-columns: 1fr;
+        }
+
+        /* ── Glass Panels ── */
+        .kiosk-panel {
+          background: ${MONOCHROME_THEME.panelBg};
+          border: 1px solid ${MONOCHROME_THEME.panelBorder};
+          border-radius: 20px;
+          padding: 22px;
+          display: flex;
+          flex-direction: column;
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          min-height: 0;
+          position: relative;
+          overflow: hidden;
+        }
+        .kiosk-panel-label {
+          font-family: var(--font-mono, monospace);
+          font-size: 12px;
+          font-weight: 700;
+          letter-spacing: 2px;
+          text-transform: uppercase;
+          color: #ffffff;
+          margin-bottom: 16px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        /* ── Now Playing Hero 65% / 35% Grid ── */
+        .now-playing-section {
+          transition: opacity 1s ease-out;
+        }
+        .now-playing-section.fading {
+          opacity: 0.5;
+        }
+        .now-playing-hero-grid {
+          display: grid;
+          grid-template-columns: 65% 35%;
+          gap: 20px;
+          align-items: center;
+          margin-bottom: 16px;
+        }
+        .now-playing-left-65 {
+          display: flex;
+          align-items: center;
+          gap: 20px;
+          min-width: 0;
+        }
+        .now-playing-artwork-wrap {
+          flex-shrink: 0;
+        }
+        .now-playing-art {
+          width: 170px;
+          height: 170px;
+          border-radius: 14px;
+          object-fit: cover;
+          box-shadow: 0 12px 32px rgba(0,0,0,0.6);
+        }
+        .now-playing-placeholder {
+          width: 170px;
+          height: 170px;
+          border-radius: 14px;
+          background: rgba(255,255,255,0.03);
+          border: 1px solid rgba(255,255,255,0.08);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .now-playing-meta {
+          flex: 1;
+          min-width: 0;
+        }
+        .now-playing-title {
+          font-size: 34px;
+          font-weight: 800;
+          letter-spacing: -0.6px;
+          line-height: 1.1;
+          margin: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+        }
+        .now-playing-artist {
+          font-size: 20px;
+          color: rgba(255,255,255,0.6);
+          margin: 6px 0 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .now-playing-chips {
+          display: flex;
+          gap: 8px;
+          margin-top: 12px;
+        }
+        .now-playing-chip {
+          padding: 4px 10px;
+          border-radius: 99px;
+          border: 1px solid rgba(255,255,255,0.14);
+          font-family: var(--font-mono, monospace);
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 1px;
+          color: rgba(255,255,255,0.7);
+        }
+        .now-playing-chip.requested {
+          background: rgba(255,255,255,0.1);
+          color: #fff;
+        }
+
+        /* 35% QR Block */
+        .now-playing-right-35 {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          border-left: 1px solid rgba(255,255,255,0.08);
+          padding-left: 16px;
+        }
+        .hero-qr-container {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+        }
+        .hero-qr-frame {
+          background: #ffffff;
+          padding: 8px;
+          border-radius: 10px;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+        }
+        .hero-qr-callout {
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 1.5px;
+          color: #ffffff;
+          margin-top: 4px;
+        }
+        .hero-qr-sub {
+          font-size: 11px;
+          color: rgba(255,255,255,0.45);
+        }
+
+        .live-badge {
+          background: #ffffff;
+          color: #000000;
+          font-size: 0.65rem;
+          padding: 0.15rem 0.45rem;
+          border-radius: 0.25rem;
+          font-weight: 800;
+          margin-left: 6px;
+        }
+
+        /* ── EQ Bars ── */
+        .kiosk-eq-bars {
+          display: flex;
+          align-items: flex-end;
+          gap: 5px;
+          height: 40px;
+          margin-top: 10px;
+        }
+        .kiosk-eq-bar {
+          width: 5px;
+          height: 35%;
+          border-radius: 3px;
+          background: linear-gradient(to top, #ffffff, rgba(255,255,255,0.4));
+          transform-origin: bottom;
+        }
+
+        /* ── Reserved Vibe Meter Spot (Q4 locked: 64px fixed) ── */
+        .kiosk-reserved-meter-spot {
+          height: 64px;
+          min-height: 64px;
+          width: 100%;
+          border-radius: 10px;
+          margin-top: 16px;
+          /* Intentionally empty until 1B ships */
+        }
+
+        /* ── Queue ── */
+        .queue-panel {
+          display: flex;
+          flex-direction: column;
+        }
+        .queue-header {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 14px;
+        }
+        .queue-track-count {
+          font-family: var(--font-mono, monospace);
+          font-size: 11px;
+          color: rgba(255,255,255,0.4);
+          letter-spacing: 1.5px;
+        }
+        .queue-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          overflow-y: auto;
+          flex: 1;
+          min-height: 0;
+          max-height: 380px;
+        }
+        .queue-list::-webkit-scrollbar {
+          width: 4px;
+        }
+        .queue-list::-webkit-scrollbar-thumb {
+          background: rgba(255,255,255,0.15);
+          border-radius: 2px;
+        }
+        .queue-item {
+          position: relative;
+          background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 12px;
+          padding: 10px 14px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          overflow: hidden;
+          flex-shrink: 0;
+        }
+        .queue-item-top1 {
+          border-color: rgba(255,255,255,0.3);
+          background: rgba(255,255,255,0.08);
+        }
+        .queue-item-vote-bar {
+          position: absolute;
+          left: 0;
+          top: 0;
+          bottom: 0;
+          pointer-events: none;
+        }
+        .queue-item-rank {
+          position: relative;
+          z-index: 1;
+          width: 34px;
+          height: 34px;
+          flex-shrink: 0;
+          border-radius: 8px;
+          font-family: var(--font-mono, monospace);
+          font-weight: 800;
+          font-size: 15px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .queue-item-info {
+          flex: 1;
+          min-width: 0;
+          position: relative;
+          z-index: 1;
+        }
+        .queue-item-title {
+          font-size: 18px;
+          font-weight: 700;
+          letter-spacing: -0.3px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .queue-item-artist {
+          font-size: 14px;
+          color: rgba(255,255,255,0.55);
+          margin-top: 1px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .queue-item-nickname {
+          font-size: 11px;
+          color: rgba(255,255,255,0.35);
+          margin-top: 2px;
+          font-family: var(--font-mono, monospace);
+          letter-spacing: 0.5px;
+        }
+        .queue-item-votes {
+          position: relative;
+          z-index: 1;
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          flex-shrink: 0;
+        }
+        .queue-item-votes-row {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+        .queue-item-vote-num {
+          font-family: var(--font-mono, monospace);
+          font-weight: 800;
+          font-size: 20px;
+          line-height: 1;
+        }
+        .queue-item-vote-label {
+          font-family: var(--font-mono, monospace);
+          font-size: 9px;
+          color: rgba(255,255,255,0.4);
+          letter-spacing: 1.5px;
+          margin-top: 2px;
+        }
+        .queue-item-new {
+          animation: slide-in-glow 0.8s ease-out;
+        }
+        .queue-empty {
+          color: rgba(255,255,255,0.35);
+          text-align: center;
+          padding: 2rem;
+          font-size: 16px;
+        }
+
+        /* ── Option 2b: Recently Played Compact Strip (Inside Queue Area) ── */
+        .kiosk-just-played-panel {
+          margin-top: 16px;
+          padding-top: 14px;
+          border-top: 1px solid rgba(255,255,255,0.1);
+        }
+        .kiosk-just-played-title {
+          font-size: 11px;
+          letter-spacing: 2px;
+          color: rgba(255,255,255,0.55);
+          margin-bottom: 8px;
+        }
+        .kiosk-just-played-items {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .kiosk-just-played-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 13px;
+          color: rgba(255,255,255,0.85);
+          padding: 2px 0;
+        }
+        .kiosk-just-played-dot {
+          color: rgba(255,255,255,0.35);
+          font-size: 12px;
+        }
+        .kiosk-just-played-track {
+          font-weight: 600;
+          color: #ffffff;
+        }
+        .kiosk-just-played-sep {
+          color: rgba(255,255,255,0.3);
+        }
+        .kiosk-just-played-artist {
+          color: rgba(255,255,255,0.6);
+        }
+        .history-empty {
+          color: rgba(255,255,255,0.35);
+          font-size: 13px;
+          padding: 8px 0;
+        }
+        .requested-badge {
+          background: rgba(255,255,255,0.15);
+          color: #fff;
+          font-size: 0.65rem;
+          padding: 0.15rem 0.4rem;
+          border-radius: 0.25rem;
+          white-space: nowrap;
+          margin-left: auto;
+        }
+
+        /* ── CTA Button ── */
+        .request-button {
+          margin-top: 20px;
+          align-self: center;
+          flex-shrink: 0;
+          position: relative;
+          z-index: 1;
+          border: 1px solid rgba(255,255,255,0.25);
+          background: #ffffff;
+          color: #000000;
+          font-family: var(--font-sans, sans-serif);
+          font-size: 18px;
+          font-weight: 800;
+          letter-spacing: 0.5px;
+          padding: 16px 44px;
+          border-radius: 999px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          transition: transform 0.2s, box-shadow 0.2s;
+          box-shadow: 0 12px 36px rgba(255,255,255,0.2);
+        }
+        .request-button:hover {
+          transform: scale(1.03);
+          box-shadow: 0 16px 48px rgba(255,255,255,0.3);
+        }
+        .touch-prompt-pill {
+          background: #000000;
+          color: #ffffff;
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 1px;
+          padding: 3px 8px;
+          border-radius: 99px;
+          margin-left: 4px;
+        }
+
+        /* ── Animations ── */
+        @keyframes kiosk-eq {
+          from { height: 18%; }
+          to { height: 100%; }
+        }
+        @keyframes kiosk-pulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.3); opacity: 0.6; }
+        }
+        @keyframes slide-in-glow {
+          0% {
+            transform: translateX(-20px);
+            opacity: 0;
+          }
+          100% {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+      `}</style>
     </>
   );
 }
