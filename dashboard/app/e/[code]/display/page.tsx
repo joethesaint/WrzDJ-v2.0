@@ -179,7 +179,10 @@ export default function KioskDisplayPage() {
   useEventStream(code, {
     onRequestCreated: () => { loadDisplayRef.current(); },
     onRequestStatusChanged: () => { loadDisplayRef.current(); },
-    onNowPlayingChanged: () => { loadDisplayRef.current(); },
+    onNowPlayingChanged: () => { 
+      loadDisplayRef.current(); 
+      setVibeScore(null);
+    },
     onRequestsBulkUpdate: () => { loadDisplayRef.current(); },
     onBridgeStatusChanged: () => { loadDisplayRef.current(); },
     onVibeUpdated: (data) => { setVibeScore(data.vibe_score); },
