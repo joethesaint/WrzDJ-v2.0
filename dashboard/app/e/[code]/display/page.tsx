@@ -7,6 +7,7 @@ import { api, ApiError, KioskDisplay, NowPlayingInfo, PlayHistoryItem, PUBLIC_PA
 import { useEventStream } from '@/lib/use-event-stream';
 import { usePollingLoop } from '@/lib/usePollingLoop';
 import { RequestModal } from './components/RequestModal';
+import { ExpiredStage, ExpiredStamp } from './components/ExpiredStage';
 
 const AUTO_SCROLL_INTERVAL = 5000; // 5 seconds between auto-scrolls
 const PUBLIC_PAGE_MAX_INITIAL = 100;
@@ -332,14 +333,19 @@ export default function KioskDisplayPage() {
 
   if (error || !display) {
     const isUnpaired = error?.status === 404;
+    const isExpired = error?.status === 410;
     return (
       <div className="kiosk-error">
-        <h1>{isUnpaired ? 'Kiosk Not Paired' : 'Event Unavailable'}</h1>
+        {isExpired && <ExpiredStage />}
+        <h1>{isExpired ? 'Event Expired' : isUnpaired ? 'Kiosk Not Paired' : 'Event Unavailable'}</h1>
         <p>
-          {isUnpaired
+          {isExpired
+            ? 'This event has ended and is no longer accepting requests.'
+            : isUnpaired
             ? 'This kiosk screen is not paired with an active event.'
             : (error?.message || 'Unable to load event.')}
         </p>
+        {isExpired && <ExpiredStamp />}
         <button onClick={() => router.push('/kiosk-pair')} className="kiosk-pair-btn">
           Go to Pairing Screen
         </button>
