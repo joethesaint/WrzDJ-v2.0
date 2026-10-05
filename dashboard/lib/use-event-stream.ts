@@ -14,7 +14,12 @@ interface EventStreamHandlers {
     deck_count?: number | null;
     uptime_seconds?: number | null;
   }) => void;
-  onVibeUpdated?: (data: { score: number | null }) => void;
+  onVibeUpdated?: (data: {
+    vibe_score: number;
+    vote_count: number;
+    track_title?: string | null;
+    artist?: string | null;
+  }) => void;
 }
 
 const INITIAL_RETRY_MS = 1000;

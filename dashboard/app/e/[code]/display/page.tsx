@@ -182,7 +182,7 @@ export default function KioskDisplayPage() {
     onNowPlayingChanged: () => { loadDisplayRef.current(); },
     onRequestsBulkUpdate: () => { loadDisplayRef.current(); },
     onBridgeStatusChanged: () => { loadDisplayRef.current(); },
-    onVibeUpdated: (data) => { setVibeScore(data.score); },
+    onVibeUpdated: (data) => { setVibeScore(data.vibe_score); },
   });
 
   useEffect(() => {
