@@ -20,6 +20,7 @@ from app.api import (
     sse,
     tidal,
     verify,
+    vibe,
     votes,
 )
 
@@ -48,6 +49,7 @@ api_router.include_router(guest.router, prefix="/public", tags=["guest"])
 api_router.include_router(verify.router, prefix="/public/guest", tags=["verify"])
 api_router.include_router(collect.router, prefix="/public/collect", tags=["collect"])
 api_router.include_router(sse.router, prefix="/public", tags=["sse"])
+api_router.include_router(vibe.router, prefix="/public/events", tags=["vibe"])
 api_router.include_router(bridge.router, tags=["bridge"])
 api_router.include_router(tidal.router, prefix="/tidal", tags=["tidal"])
 api_router.include_router(beatport.router, prefix="/beatport", tags=["beatport"])
