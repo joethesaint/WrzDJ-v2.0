@@ -35,9 +35,9 @@ const KIOSK_THEME = {
   accent: '#a855f7',
   accentBright: '#e9d5ff',
   bgGradient: 'radial-gradient(ellipse at 50% 12%, rgba(88, 28, 135, 0.28) 0%, transparent 48%), radial-gradient(ellipse at 50% 15%, #18131f 0%, #0d0e11 70%, #050608 100%)',
+  metal: 'linear-gradient(110deg, #6d28d9 0%, #a855f7 28%, #ede4ff 45%, #a855f7 62%, #7c3aed 100%)',
   panelBg: 'rgba(20, 22, 26, 0.78)',
   glow: 'rgba(168, 85, 247, 0.36)',
-  liveDot: '#c084fc',
 };
 
 // Clean 2D Vector SVGs (Strictly zero emojis)
@@ -760,9 +760,10 @@ export default function KioskDisplayPage() {
           width: 8px;
           height: 8px;
           border-radius: 50%;
-          background: ${KIOSK_THEME.liveDot};
+          background: ${KIOSK_THEME.metal};
+          background-size: 250% 100%;
           box-shadow: 0 0 12px ${KIOSK_THEME.glow};
-          animation: kiosk-pulse 1.8s ease-in-out infinite;
+          animation: kiosk-pulse 1.8s ease-in-out infinite, liquid-metal-drift 9s linear infinite;
         }
         .kiosk-header-left {
           flex: 1;
@@ -860,6 +861,15 @@ export default function KioskDisplayPage() {
           display: flex;
           align-items: center;
           gap: 8px;
+        }
+        .kiosk-live-label > span:not(.kiosk-live-dot),
+        .kiosk-panel-label {
+          background-image: ${KIOSK_THEME.metal};
+          background-size: 250% 100%;
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+          animation: liquid-metal-drift 9s linear infinite;
         }
 
         /* ── Now Playing Hero 65% / 35% Grid ── */
@@ -1251,6 +1261,20 @@ export default function KioskDisplayPage() {
         @keyframes kiosk-pulse {
           0%, 100% { transform: scale(1); opacity: 1; }
           50% { transform: scale(1.3); opacity: 0.6; }
+        }
+
+        @keyframes liquid-metal-drift {
+          from { background-position: 100% 0; }
+          to { background-position: -150% 0; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .kiosk-live-label > span:not(.kiosk-live-dot),
+          .kiosk-panel-label,
+          .kiosk-live-dot {
+            animation: none;
+            background-position: 50% 0;
+          }
         }
         @keyframes slide-in-glow {
           0% {
