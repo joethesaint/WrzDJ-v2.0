@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { api, ApiError, HumanVerificationRequiredError, PublicEvent, GuestNowPlaying, GuestRequestInfo, PUBLIC_PAGE_MAX, SearchResult } from '@/lib/api';
 import { useEventStream } from '@/lib/use-event-stream';
+import VibeMascot from '@/components/VibeMascot';
 import { useGuestIdentity } from '@/lib/use-guest-identity';
 import { useHumanVerification, HumanVerificationFailedError } from '@/lib/useHumanVerification';
 import HumanVerificationOverlay from '@/components/HumanVerificationOverlay';
@@ -30,11 +31,11 @@ const ACCENT2 = '#ff2bd6';
 
 /** Guest Vibe Meter buttons, low to high. Matches the server's 3s per-guest cooldown. */
 const VIBE_OPTIONS = [
-  { score: 1, emoji: '😴', label: 'Chill' },
-  { score: 2, emoji: '😐', label: 'Fair' },
-  { score: 3, emoji: '🙂', label: 'Good' },
-  { score: 4, emoji: '🔥', label: 'Fire' },
-  { score: 5, emoji: '🚀', label: 'Hype' },
+  { score: 1, label: 'Dead' },
+  { score: 2, label: 'Cool' },
+  { score: 3, label: 'Good' },
+  { score: 4, label: 'Hot' },
+  { score: 5, label: 'Fire' },
 ] as const;
 const VIBE_COOLDOWN_MS = 3000;
 
@@ -681,8 +682,11 @@ export default function JoinEventPage() {
                   Now Playing
                 </span>
                 {liveVibeScore !== null && (
-                  <span data-testid="vibe-score" style={{ fontSize: 10, fontFamily: 'var(--font-mono, monospace)', color: ACCENT, background: 'rgba(0, 240, 255, 0.12)', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>
-                    {liveVibeScore}% ENERGY
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <VibeMascot score={liveVibeScore} size={28} />
+                    <span data-testid="vibe-score" style={{ fontSize: 10, fontFamily: 'var(--font-mono, monospace)', color: ACCENT, background: 'rgba(0, 240, 255, 0.12)', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>
+                      {liveVibeScore}% ENERGY
+                    </span>
                   </span>
                 )}
               </div>
@@ -719,7 +723,7 @@ export default function JoinEventPage() {
                         transition: 'transform 0.15s ease, background 0.15s ease, opacity 0.15s ease',
                       }}
                     >
-                      {v.emoji}
+                      {v.score}
                     </button>
                   );
                 })}

@@ -65,6 +65,10 @@ vi.mock('@/components/EmailRecoveryModal', () => ({
   default: () => null,
 }));
 
+vi.mock('bot-avatars', () => ({
+  BotAvatar: ({ state }: { state: string }) => <span data-testid="bot-avatar" data-state={state} />,
+}));
+
 vi.mock('@/lib/use-event-stream', () => ({
   useEventStream: vi.fn(),
 }));
@@ -313,15 +317,16 @@ describe('JoinEventPage — request list view', () => {
     mockApi.submitVibeVote.mockResolvedValue({ status: 'recorded', vibe_score: 100, vote_count: 1 });
     render(<JoinEventPage />);
 
-    const hype = await screen.findByRole('button', { name: /Hype \(5 of 5\)/ });
-    fireEvent.click(hype);
+    const fire = await screen.findByRole('button', { name: /Fire \(5 of 5\)/ });
+    fireEvent.click(fire);
 
     await waitFor(() => {
       expect(mockApi.submitVibeVote).toHaveBeenCalledWith('TEST01', 5);
       expect(screen.getByTestId('vibe-score')).toHaveTextContent('100% ENERGY');
+      expect(screen.getByTestId('vibe-mascot')).toHaveAttribute('data-state', 'working');
     });
     // Cooldown: the buttons lock until it ends.
-    expect(hype).toBeDisabled();
+    expect(fire).toBeDisabled();
   });
 
   it('tells the guest when no song is playing for a vibe vote', async () => {
