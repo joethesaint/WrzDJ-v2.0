@@ -21,7 +21,8 @@
 
 .stage path,
 .stage line,
-.stage circle {
+.stage circle,
+.stage ellipse {
   fill: none;
   stroke-width: 1.5;
   stroke-linecap: round;
@@ -35,9 +36,12 @@
 .stage .crease {
   stroke: var(--muted);
 }
-.stage .guide {
-  stroke: var(--line);
+/* Spotlight cone: faint and dashed, so it reads as light, not structure. */
+.stage .beam {
+  stroke: var(--muted);
   stroke-width: 1;
+  stroke-dasharray: 2 4;
+  opacity: 0.7;
 }
 .stage .dot {
   fill: var(--muted);

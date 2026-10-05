@@ -12,10 +12,6 @@ export function ExpiredStage() {
       aria-label="An isometric concert stage. The curtain is down. The stage is empty."
     >
       <svg viewBox="0 0 400 320" aria-hidden="true">
-        {/* Light beams converging on the empty mic. */}
-        <line className={styles.guide} x1="158" y1="128" x2="214" y2="214" />
-        <line className={styles.guide} x1="270" y1="132" x2="214" y2="214" />
-
         <g className={styles.curtain}>
           <path
             className={styles.sil}
@@ -31,7 +27,14 @@ export function ExpiredStage() {
         <path className={styles.crease} d="M 284 222 L 228 254 L 228 260 L 284 228 Z" />
         <path className={styles.crease} d="M 228 254 L 144 206 L 144 212 L 228 260 Z" />
 
-        {/* Mic stand alone on the stage. */}
+        {/* One spotlight, hanging front-left, its cone landing in a pool on the stage. */}
+        <line className={styles.crease} x1="158" y1="96" x2="158" y2="117" />
+        <circle className={styles.sil} cx="158" cy="124" r="7" />
+        <line className={styles.beam} x1="152" y1="129" x2="194" y2="216" />
+        <line className={styles.beam} x1="164" y1="119" x2="234" y2="216" />
+        <ellipse className={styles.crease} cx="214" cy="216" rx="20" ry="10" />
+
+        {/* Mic stand alone in the light. */}
         <line className={styles.sil} x1="214" y1="214" x2="214" y2="198" />
         <circle className={styles.sil} cx="214" cy="196" r="3" />
 
@@ -39,10 +42,6 @@ export function ExpiredStage() {
           <line className={styles.crease} x1="200" y1="174" x2="200" y2="188" />
           <circle className={styles.dot} cx="200" cy="192" r="3" />
         </g>
-
-        {/* Spotlights above. */}
-        <circle className={styles.dot} cx="158" cy="128" r="4" />
-        <circle className={styles.dot} cx="270" cy="132" r="4" />
       </svg>
     </div>
   );
