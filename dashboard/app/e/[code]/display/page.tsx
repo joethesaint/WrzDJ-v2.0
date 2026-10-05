@@ -463,9 +463,9 @@ export default function KioskDisplayPage() {
                 {/* 65% Track Information & 2D Vector Artwork */}
                 <div className="now-playing-left-65">
                   <div className="now-playing-artwork-wrap">
-                    {nowPlaying.artwork_url ? (
+                    {('artwork_url' in nowPlaying ? (nowPlaying as any).artwork_url : (nowPlaying as any).album_art_url) ? (
                       <img
-                        src={nowPlaying.artwork_url}
+                        src={('artwork_url' in nowPlaying ? (nowPlaying as any).artwork_url : (nowPlaying as any).album_art_url)}
                         alt={nowPlaying.title}
                         className="now-playing-art"
                       />
