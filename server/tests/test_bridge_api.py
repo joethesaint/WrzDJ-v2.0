@@ -533,3 +533,29 @@ class TestRequestAutoMatch:
         history = db.query(PlayHistory).filter(PlayHistory.title == "Blue Monday").first()
         assert history is not None
         assert history.matched_request_id == request_id
+
+
+class TestNowPlayingResetsVibe:
+    """A track change broadcasts a cleared Vibe Meter."""
+
+    @patch("app.api.bridge.publish_event")
+    @patch("app.core.bridge_auth.get_settings")
+    @patch("app.services.now_playing.lookup_spotify_album_art")
+    def test_publishes_vibe_reset(
+        self, mock_spotify, mock_settings, mock_publish, client: TestClient, test_event: Event
+    ):
+        mock_settings.return_value.bridge_api_key = "test-key"
+        mock_spotify.return_value = None
+
+        response = client.post(
+            "/api/bridge/nowplaying",
+            json={"event_code": "TEST01", "title": "New Song", "artist": "Someone"},
+            headers={"X-Bridge-API-Key": "test-key"},
+        )
+        assert response.status_code == 200
+
+        types = [c.args[1] for c in mock_publish.call_args_list]
+        assert types == ["now_playing_changed", "vibe_updated"]
+        reset = mock_publish.call_args_list[1].args[2]
+        assert reset["vibe_score"] is None
+        assert reset["vote_count"] == 0
