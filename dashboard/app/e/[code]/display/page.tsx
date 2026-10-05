@@ -481,7 +481,7 @@ export default function KioskDisplayPage() {
                     <p className="now-playing-artist">{nowPlaying.artist}</p>
                     <div className="now-playing-chips">
                       <span className="now-playing-chip">STAGE MIX</span>
-                      {nowPlaying.matched_request_id && (
+                      {('matched_request_id' in nowPlaying && (nowPlaying as any).matched_request_id) && (
                         <span className="now-playing-chip requested">CROWD PICK</span>
                       )}
                     </div>
