@@ -3,10 +3,13 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
+import EventExpiredDisplay from '@/components/EventExpiredDisplay';
 import { api, ApiError, KioskDisplay, NowPlayingInfo, PlayHistoryItem, PUBLIC_PAGE_MAX } from '@/lib/api';
 import { useEventStream } from '@/lib/use-event-stream';
 import { usePollingLoop } from '@/lib/usePollingLoop';
 import { RequestModal } from './components/RequestModal';
+import { HairlineTurntable } from './components/HairlineTurntable';
+import { NewcomerGuideModal } from './components/NewcomerGuideModal';
 const AUTO_SCROLL_INTERVAL = 5000; // 5 seconds between auto-scrolls
 // Accepted-queue growing-window: start at 100 and grow by this step each refresh
 // (clamped to PUBLIC_PAGE_MAX) when the server reports more accepted requests.
@@ -28,8 +31,8 @@ function withAlpha(hex: string, a: number): string {
   return `rgba(${r},${g},${b},${a})`;
 }
 
-const ACCENT_CYAN = '#00f0ff';
-const ACCENT_MAGENTA = '#ff2bd6';
+const ACCENT_CYAN = '#a855f7';
+const ACCENT_MAGENTA = '#c084fc';
 
 export default function KioskDisplayPage() {
   const params = useParams();
@@ -43,6 +46,8 @@ export default function KioskDisplayPage() {
   // StageLinQ data
   const [stagelinqNowPlaying, setStagelinqNowPlaying] = useState<NowPlayingInfo | null>(null);
   const [playHistory, setPlayHistory] = useState<PlayHistoryItem[]>([]);
+  const [liveVibeScore, setLiveVibeScore] = useState<number | null>(null);
+  const [liveVibeCount, setLiveVibeCount] = useState<number>(0);
 
   // Sticky now-playing: keep showing last track for 10s after it goes null
   const [lastKnownNowPlaying, setLastKnownNowPlaying] = useState<NowPlayingInfo | null>(null);
@@ -58,6 +63,7 @@ export default function KioskDisplayPage() {
 
   // Request modal state
   const [showRequestModal, setShowRequestModal] = useState(false);
+  const [showGuideModal, setShowGuideModal] = useState(false);
 
   // Track whether initial load succeeded (ref avoids stale closure in useCallback)
   const hasLoadedRef = useRef(false);
@@ -137,6 +143,10 @@ export default function KioskDisplayPage() {
     onNowPlayingChanged: () => { loadDisplayRef.current(); },
     onRequestsBulkUpdate: () => { loadDisplayRef.current(); },
     onBridgeStatusChanged: () => { loadDisplayRef.current(); },
+    onVibeUpdated: (data) => {
+      setLiveVibeScore(data.vibe_score);
+      setLiveVibeCount(data.vote_count);
+    },
   });
 
   // Register the kiosk's session token with the API client so the request
@@ -285,23 +295,24 @@ export default function KioskDisplayPage() {
     const is410 = error?.status === 410;
     const is404 = error?.status === 404;
 
+    if (is410) {
+      return <EventExpiredDisplay />;
+    }
     return (
       <div className="kiosk-container">
         <div className="kiosk-error">
-          <h1>{is410 ? 'Event Expired' : is404 ? 'Event Not Found' : 'Error'}</h1>
+          <h1>{is404 ? 'Event Not Found' : 'Error'}</h1>
           <p>
-            {is410
-              ? 'This event has ended and is no longer accepting requests.'
-              : is404
+            {is404
                 ? 'This event does not exist.'
-                : error?.message || 'This event may have expired.'}
+                : error?.message || 'An error occurred.'}
           </p>
         </div>
       </div>
     );
   }
 
-  const bannerAccent = safeColor(display.banner_colors?.[0], '#3b82f6');
+  const bannerAccent = safeColor(display.banner_colors?.[0], '#a855f7');
   const queue = display.accepted_queue;
   // True accepted-queue size (before pagination). `queue` is only the loaded
   // page, so use this for the headline count and a "showing X of Y" indicator.
@@ -487,14 +498,14 @@ export default function KioskDisplayPage() {
         .kiosk-main {
           flex: 1;
           display: grid;
-          grid-template-columns: 1fr 1.3fr 1fr;
+          grid-template-columns: 65% 35%;
           gap: 28px;
           min-height: 0;
           position: relative;
           z-index: 1;
         }
         .kiosk-main-single {
-          grid-template-columns: 1.3fr 1fr;
+          grid-template-columns: 65% 35%;
         }
 
         /* ── Glass panels ── */
@@ -616,6 +627,55 @@ export default function KioskDisplayPage() {
           border-radius: 3px;
           background: linear-gradient(to top, ${ACCENT_CYAN}, ${withAlpha(ACCENT_CYAN, 0.6)});
           transform-origin: bottom;
+        }
+
+        /* ── 1B: Massive Vibe Meter ── */
+        .kiosk-vibe-meter {
+          height: 120px;
+          margin-top: 32px;
+          border-radius: 16px;
+          background: rgba(0,0,0,0.3);
+          position: relative;
+          overflow: hidden;
+          border: 1px solid rgba(255,255,255,0.08);
+          box-shadow: inset 0 2px 20px rgba(0,0,0,0.8), 0 10px 40px rgba(0,0,0,0.5);
+          width: 100%;
+        }
+        .kiosk-vibe-meter-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #3b82f6 0%, #a855f7 50%, #ef4444 100%);
+          transition: width 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+          border-radius: 14px;
+          box-shadow: 0 0 50px rgba(168, 85, 247, 0.7), inset 0 0 20px rgba(255,255,255,0.4);
+          position: relative;
+        }
+        .kiosk-vibe-meter-fill::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(135deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.4) 50%, rgba(255,255,255,0) 100%);
+          background-size: 200% 200%;
+          animation: vibe-liquid 2.5s infinite linear;
+          mix-blend-mode: overlay;
+        }
+        @keyframes vibe-liquid {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+        .kiosk-vibe-meter-overlay {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(180deg, rgba(255,255,255,0.15) 0%, transparent 40%, rgba(0,0,0,0.5) 100%),
+                      repeating-linear-gradient(90deg, transparent, transparent calc(10% - 1px), rgba(255,255,255,0.15) 10%);
+          border-radius: 14px;
+          pointer-events: none;
+        }
+        .kiosk-reserved-meter-spot {
+          height: 120px;
+          min-height: 120px;
+          width: 100%;
+          border-radius: 16px;
+          margin-top: 32px;
         }
 
         /* ── Queue ── */
@@ -1180,7 +1240,8 @@ export default function KioskDisplayPage() {
               <div className="kiosk-qr-bg">
                 <QRCodeSVG value={display.qr_join_url} size={140} />
               </div>
-              <p className="kiosk-qr-label">Scan to request from phone</p>
+                            <p className="kiosk-qr-label">Scan to request from phone</p>
+              <button onClick={() => setShowGuideModal(true)} style={{ marginTop: 12, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: 20, padding: '6px 14px', fontSize: 11, fontWeight: 'bold', cursor: 'pointer', letterSpacing: 1 }}>HOW IT WORKS</button>
             </div>
           )}
         </div>
@@ -1202,11 +1263,13 @@ export default function KioskDisplayPage() {
               </div>
               <div className="now-playing-content">
                 {nowPlaying.album_art_url ? (
-                  <img
-                    src={nowPlaying.album_art_url}
-                    alt={nowPlaying.title}
-                    className="now-playing-art"
-                  />
+                                  <HairlineTurntable
+                  size="full"
+                  isPlaying={isLive}
+                  theme="violet"
+                  title={nowPlaying.title}
+                  artist={nowPlaying.artist}
+                />
                 ) : (
                   <div className="now-playing-placeholder">
                     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" xmlns="http://www.w3.org/2000/svg">
@@ -1236,9 +1299,28 @@ export default function KioskDisplayPage() {
                   ))}
                 </div>
               </div>
+              
+              {/* VIBE METER (1B) */}
+              {liveVibeScore !== null ? (
+                <div className="kiosk-vibe-meter">
+                  <div 
+                    className="kiosk-vibe-meter-fill" 
+                    style={{ width: `${Math.max(0, Math.min(100, liveVibeScore))}%` }} 
+                  />
+                  <div className="kiosk-vibe-meter-overlay" />
+                </div>
+              ) : (
+                <div
+                  className="kiosk-reserved-meter-spot"
+                  data-testid="kiosk-reserved-meter-spot"
+                  data-slot="vibe-meter"
+                  aria-hidden="true"
+                />
+              )}
             </div>
           )}
 
+          <div className="kiosk-main-right-col">
           {/* QUEUE (leaderboard) */}
           <div className="kiosk-panel">
             <div className="queue-header">
@@ -1386,6 +1468,7 @@ export default function KioskDisplayPage() {
               </div>
             )}
           </div>
+          </div>
         </div>
 
         {/* CTA Button */}
@@ -1406,6 +1489,12 @@ export default function KioskDisplayPage() {
         )}
       </div>
 
+            {showGuideModal && (
+        <NewcomerGuideModal
+          accentColor={bannerAccent}
+          onClose={() => setShowGuideModal(false)}
+        />
+      )}
       {showRequestModal && (
         <RequestModal
           code={code}
@@ -1416,3 +1505,4 @@ export default function KioskDisplayPage() {
     </>
   );
 }
+
