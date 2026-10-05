@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import EmailVerification from './EmailVerification';
+import GuestBotAvatar from './GuestBotAvatar';
 
 interface Props {
   nickname: string;
@@ -11,6 +12,8 @@ interface Props {
   forceDark?: boolean;
   autoNamed?: boolean;
   onRename?: (newName: string) => Promise<void> | void;
+  /** When known, the guest's bot avatar replaces the generic person icon. */
+  guestId?: number | null;
 }
 
 export function IdentityBar({
@@ -21,6 +24,7 @@ export function IdentityBar({
   forceDark,
   autoNamed,
   onRename,
+  guestId,
 }: Props) {
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -35,7 +39,14 @@ export function IdentityBar({
 
   return (
     <div className="identity-bar" style={darkVars}>
-      <span className="identity-bar-name">👤 {nickname}</span>
+      <span className="identity-bar-name">
+        {guestId != null ? (
+          <GuestBotAvatar guestId={guestId} theme={forceDark ? 'dark' : 'auto'} />
+        ) : (
+          '👤'
+        )}{' '}
+        {nickname}
+      </span>
       {autoNamed && onRename && !renaming && (
         <button className="identity-bar-action" onClick={() => { setDraft(''); setRenaming(true); }}>
           Add a name

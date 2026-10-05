@@ -35,7 +35,7 @@ export default function CollectPage() {
   const router = useRouter();
   const params = useParams<{ code: string }>();
   const code = params?.code ?? '';
-  const { reconcileHint, refresh: refreshIdentity } = useGuestIdentity();
+  const { guestId, reconcileHint, refresh: refreshIdentity } = useGuestIdentity();
   const { state: humanState, reverify, retry, widgetContainerRef } = useHumanVerification();
 
   const [event, setEvent] = useState<CollectEventPreview | null>(null);
@@ -367,6 +367,7 @@ export default function CollectPage() {
 
       {nickname && (
         <IdentityBar
+          guestId={guestId}
           forceDark
           nickname={nickname}
           emailVerified={emailVerified}

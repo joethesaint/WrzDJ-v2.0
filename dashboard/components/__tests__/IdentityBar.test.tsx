@@ -14,10 +14,26 @@ vi.mock('../../lib/turnstile', () => ({
   loadTurnstileScript: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('bot-avatars', () => ({
+  BotAvatar: ({ type }: { type: string }) => <span data-testid="bot-avatar" data-type={type} />,
+}));
+
 import { IdentityBar } from '../IdentityBar';
 import { apiClient } from '../../lib/api';
 
 describe('IdentityBar', () => {
+  it('shows the guest bot instead of the person icon when the guest id is known', () => {
+    render(<IdentityBar guestId={7} nickname="DJ_Foo" emailVerified={false} onVerified={vi.fn()} />);
+    expect(screen.getByTestId('guest-bot')).toBeInTheDocument();
+    expect(screen.queryByText(/👤/)).toBeNull();
+  });
+
+  it('keeps the person icon until the guest id is known', () => {
+    render(<IdentityBar guestId={null} nickname="DJ_Foo" emailVerified={false} onVerified={vi.fn()} />);
+    expect(screen.queryByTestId('guest-bot')).toBeNull();
+    expect(screen.getByText(/👤/)).toBeInTheDocument();
+  });
+
   it('shows nickname', () => {
     render(<IdentityBar nickname="DJ_Foo" emailVerified={false} onVerified={vi.fn()} />);
     expect(screen.getByText(/DJ_Foo/)).toBeInTheDocument();
