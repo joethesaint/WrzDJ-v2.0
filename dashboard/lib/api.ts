@@ -2347,6 +2347,32 @@ class ApiClient {
     if (eventCode) params.set('event_code', eventCode);
     return this.fetch(`/api/events/activity?${params}`);
   }
+
+  // ========== Vibe Meter ==========
+
+  async submitVibeVote(
+    eventCode: string,
+    score: number,
+  ): Promise<{
+    status: string;
+    vibe_score: number;
+    vote_count: number;
+    track_title?: string | null;
+    artist?: string | null;
+    created_at: string;
+  }> {
+    const resp = await fetch(`${getApiUrl()}/api/public/events/${eventCode}/vibe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ score }),
+    });
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      throw new ApiError((data as { detail?: string }).detail || 'Failed to submit vibe vote', resp.status);
+    }
+    return resp.json();
+  }
 }
 
 export const api = new ApiClient();

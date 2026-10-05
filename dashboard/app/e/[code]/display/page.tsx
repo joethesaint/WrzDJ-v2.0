@@ -1035,11 +1035,11 @@ export default function KioskDisplayPage() {
 
         /* ── Reserved Vibe Meter Spot (Q4 locked: 64px fixed) ── */
         .kiosk-reserved-meter-spot {
-          height: 64px;
-          min-height: 64px;
+          height: 120px;
+          min-height: 120px;
           width: 100%;
           border-radius: 10px;
-          margin-top: 16px;
+          margin-top: 32px;
           /* Intentionally empty until 1B ships */
         }
 
@@ -1217,27 +1217,42 @@ export default function KioskDisplayPage() {
         
         /* ── 1B: Vibe Meter ── */
         .kiosk-vibe-meter {
-          height: 64px;
-          margin-top: 24px;
-          border-radius: 12px;
-          background: rgba(255,255,255,0.05);
+          height: 120px;
+          margin-top: 32px;
+          border-radius: 16px;
+          background: rgba(0,0,0,0.3);
           position: relative;
           overflow: hidden;
-          box-shadow: inset 0 2px 10px rgba(0,0,0,0.5);
+          border: 1px solid rgba(255,255,255,0.08);
+          box-shadow: inset 0 2px 20px rgba(0,0,0,0.8), 0 10px 40px rgba(0,0,0,0.5);
         }
         .kiosk-vibe-meter-fill {
           height: 100%;
           background: linear-gradient(90deg, #3b82f6 0%, #a855f7 50%, #ef4444 100%);
           transition: width 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
-          border-radius: 12px;
-          box-shadow: 0 0 20px rgba(168, 85, 247, 0.4);
+          border-radius: 14px;
+          box-shadow: 0 0 50px rgba(168, 85, 247, 0.7), inset 0 0 20px rgba(255,255,255,0.4);
+          position: relative;
+        }
+        .kiosk-vibe-meter-fill::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(135deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.4) 50%, rgba(255,255,255,0) 100%);
+          background-size: 200% 200%;
+          animation: vibe-liquid 2.5s infinite linear;
+          mix-blend-mode: overlay;
+        }
+        @keyframes vibe-liquid {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
         }
         .kiosk-vibe-meter-overlay {
           position: absolute;
           inset: 0;
-          background: linear-gradient(180deg, rgba(255,255,255,0.1) 0%, transparent 50%, rgba(0,0,0,0.2) 100%);
-          border-radius: 12px;
-          border: 1px solid rgba(255,255,255,0.15);
+          background: linear-gradient(180deg, rgba(255,255,255,0.15) 0%, transparent 40%, rgba(0,0,0,0.5) 100%),
+                      repeating-linear-gradient(90deg, transparent, transparent calc(10% - 1px), rgba(255,255,255,0.15) 10%);
+          border-radius: 14px;
           pointer-events: none;
         }
         .kiosk-just-played-artist {
