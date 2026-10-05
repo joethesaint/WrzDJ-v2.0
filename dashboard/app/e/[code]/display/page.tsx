@@ -28,16 +28,15 @@ function withAlpha(hex: string, a: number): string {
   return `rgba(${r},${g},${b},${a})`;
 }
 
-// ── Monochrome Studio (Locked by Director Joe) ─────────────────────────────
-const MONOCHROME_THEME = {
-  name: 'Monochrome Studio',
-  accent: '#ffffff',
-  accentSec: '#a3a3a3',
-  bgGradient: 'radial-gradient(ellipse at 50% 15%, #18191c 0%, #0d0e11 70%, #050608 100%)',
+// ── Electric Violet with Liquid Metal (Director clarification) ─────────────
+const KIOSK_THEME = {
+  name: 'Electric Violet with Liquid Metal',
+  accent: '#a855f7',
+  accentBright: '#e9d5ff',
+  bgGradient: 'radial-gradient(ellipse at 50% 12%, rgba(88, 28, 135, 0.28) 0%, transparent 48%), radial-gradient(ellipse at 50% 15%, #18131f 0%, #0d0e11 70%, #050608 100%)',
   panelBg: 'rgba(20, 22, 26, 0.78)',
-  panelBorder: 'rgba(255, 255, 255, 0.12)',
-  glow: 'rgba(255, 255, 255, 0.25)',
-  liveDot: '#ffffff',
+  glow: 'rgba(168, 85, 247, 0.36)',
+  liveDot: '#c084fc',
 };
 
 // Clean 2D Vector SVGs (Strictly zero emojis)
@@ -381,7 +380,7 @@ export default function KioskDisplayPage() {
   const acceptedTotal = display.accepted_queue_total ?? queue.length;
   const hasMoreThanShown = acceptedTotal > queue.length;
   const maxVotes = queue.length > 0 ? Math.max(...queue.map((item) => item.vote_count)) : 0;
-  const bannerAccent = safeColor(display.banner_colors?.accent, MONOCHROME_THEME.accent);
+  const bannerAccent = safeColor(display.banner_colors?.accent, KIOSK_THEME.accent);
 
   return (
     <>
@@ -660,7 +659,7 @@ export default function KioskDisplayPage() {
           width: 100vw;
           height: 100vh;
           background: #050608;
-          background-image: ${MONOCHROME_THEME.bgGradient};
+          background-image: ${KIOSK_THEME.bgGradient};
           color: #ffffff;
           display: flex;
           flex-direction: column;
@@ -677,7 +676,7 @@ export default function KioskDisplayPage() {
           transform: translateX(-50%);
           width: 900px;
           height: 250px;
-          background: radial-gradient(ellipse at center, rgba(255,255,255,0.06) 0%, transparent 70%);
+          background: radial-gradient(ellipse at center, ${KIOSK_THEME.glow} 0%, transparent 70%);
           pointer-events: none;
           z-index: 0;
         }
@@ -688,8 +687,8 @@ export default function KioskDisplayPage() {
           align-items: center;
           gap: 16px;
           padding: 8px 16px;
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.08);
+          background: linear-gradient(110deg, rgba(168,85,247,0.10), rgba(255,255,255,0.035) 42%, rgba(168,85,247,0.045));
+          border: 1px solid rgba(192,132,252,0.18);
           border-radius: 10px;
           margin-bottom: 20px;
           font-size: 13px;
@@ -704,7 +703,7 @@ export default function KioskDisplayPage() {
           font-family: var(--font-mono, monospace);
           font-weight: 700;
           letter-spacing: 1.5px;
-          color: #ffffff;
+          color: ${KIOSK_THEME.accentBright};
           font-size: 11px;
         }
         .guidance-step {
@@ -742,7 +741,7 @@ export default function KioskDisplayPage() {
           font-family: var(--font-mono, monospace);
           font-size: 13px;
           letter-spacing: 3px;
-          color: #ffffff;
+          color: ${KIOSK_THEME.accentBright};
           font-weight: 700;
           text-transform: uppercase;
           margin-bottom: 8px;
@@ -755,8 +754,8 @@ export default function KioskDisplayPage() {
           width: 8px;
           height: 8px;
           border-radius: 50%;
-          background: #ffffff;
-          box-shadow: 0 0 12px #ffffff;
+          background: ${KIOSK_THEME.liveDot};
+          box-shadow: 0 0 12px ${KIOSK_THEME.glow};
           animation: kiosk-pulse 1.8s ease-in-out infinite;
         }
         .kiosk-header-left {
@@ -831,8 +830,9 @@ export default function KioskDisplayPage() {
 
         /* ── Glass Panels ── */
         .kiosk-panel {
-          background: ${MONOCHROME_THEME.panelBg};
-          border: 1px solid ${MONOCHROME_THEME.panelBorder};
+          background: linear-gradient(${KIOSK_THEME.panelBg}, ${KIOSK_THEME.panelBg}) padding-box,
+            linear-gradient(135deg, rgba(192,132,252,0.38), rgba(255,255,255,0.16) 28%, rgba(168,85,247,0.10) 64%, rgba(192,132,252,0.3)) border-box;
+          border: 1px solid transparent;
           border-radius: 20px;
           padding: 22px;
           display: flex;
@@ -849,7 +849,7 @@ export default function KioskDisplayPage() {
           font-weight: 700;
           letter-spacing: 2px;
           text-transform: uppercase;
-          color: #ffffff;
+          color: ${KIOSK_THEME.accentBright};
           margin-bottom: 16px;
           display: flex;
           align-items: center;
@@ -956,6 +956,7 @@ export default function KioskDisplayPage() {
           gap: 6px;
         }
         .hero-qr-frame {
+          /* Keep a white quiet zone so the QR remains easy to scan. */
           background: #ffffff;
           padding: 8px;
           border-radius: 10px;
@@ -965,7 +966,7 @@ export default function KioskDisplayPage() {
           font-size: 11px;
           font-weight: 800;
           letter-spacing: 1.5px;
-          color: #ffffff;
+          color: ${KIOSK_THEME.accentBright};
           margin-top: 4px;
         }
         .hero-qr-sub {
@@ -974,8 +975,8 @@ export default function KioskDisplayPage() {
         }
 
         .live-badge {
-          background: #ffffff;
-          color: #000000;
+          background: linear-gradient(110deg, ${KIOSK_THEME.accent}, ${KIOSK_THEME.accentBright}, ${KIOSK_THEME.accent});
+          color: #160b20;
           font-size: 0.65rem;
           padding: 0.15rem 0.45rem;
           border-radius: 0.25rem;
@@ -995,7 +996,7 @@ export default function KioskDisplayPage() {
           width: 5px;
           height: 35%;
           border-radius: 3px;
-          background: linear-gradient(to top, #ffffff, rgba(255,255,255,0.4));
+          background: linear-gradient(to top, ${KIOSK_THEME.accent}, ${KIOSK_THEME.accentBright});
           transform-origin: bottom;
         }
 

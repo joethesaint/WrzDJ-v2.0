@@ -10,7 +10,7 @@
 ## 1. Locked Decisions for 1A Implementation
 
 ### Theme (Q2)
-- **Selection:** **Violent Liquid Metal** (`#a855f7` accent).
+- **Selection:** **Electric Violet with Liquid Metal** (`#a855f7` accent).
 - **Rule:** No theme picker or controls on the kiosk. Monochrome Studio and Obsidian Amber are parked as future configuration options in the DJ dashboard settings, keeping the public display clean and true to the original.
 
 ### Recently Played Placement (Q3)
