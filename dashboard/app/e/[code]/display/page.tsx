@@ -393,7 +393,7 @@ export default function KioskDisplayPage() {
   const acceptedTotal = display.accepted_queue_total ?? queue.length;
   const hasMoreThanShown = acceptedTotal > queue.length;
   const maxVotes = queue.length > 0 ? Math.max(...queue.map((item) => item.vote_count)) : 0;
-  const bannerAccent = safeColor(display.banner_colors?.accent, KIOSK_THEME.accent);
+  const bannerAccent = safeColor(display.banner_colors?.[0], KIOSK_THEME.accent);
 
   return (
     <>
