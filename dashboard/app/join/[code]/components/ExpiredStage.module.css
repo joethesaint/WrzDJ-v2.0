@@ -22,7 +22,8 @@
 .stage path,
 .stage line,
 .stage circle,
-.stage ellipse {
+.stage ellipse,
+.stage rect {
   fill: none;
   stroke-width: 1.5;
   stroke-linecap: round;
@@ -43,33 +44,19 @@
   stroke-dasharray: 2 4;
   opacity: 0.7;
 }
-.stage .dot {
-  fill: var(--muted);
-  stroke: none;
-}
 
-/* Hover or tap: the curtain settles, the tassel swings. */
+/* Hover: the curtain settles. */
 .curtain {
   transform-box: view-box;
   transition: transform 800ms var(--spring);
-}
-.tassel {
-  transform-box: view-box;
-  transform-origin: 200px 174px;
-  transition: transform 700ms var(--spring);
 }
 .stage:hover .curtain,
 .stage:focus-within .curtain {
   transform: translateY(12px);
 }
-.stage:hover .tassel,
-.stage:focus-within .tassel {
-  transform: rotate(-16deg);
-}
 
 @media (prefers-reduced-motion: reduce) {
-  .curtain,
-  .tassel {
+  .curtain {
     transition: none;
   }
 }

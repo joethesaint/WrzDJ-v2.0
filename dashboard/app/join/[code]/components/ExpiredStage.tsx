@@ -28,20 +28,19 @@ export function ExpiredStage() {
         <path className={styles.crease} d="M 228 254 L 144 206 L 144 212 L 228 260 Z" />
 
         {/* One spotlight, hanging front-left, its cone landing in a pool on the stage. */}
-        <line className={styles.crease} x1="158" y1="96" x2="158" y2="117" />
-        <circle className={styles.sil} cx="158" cy="124" r="7" />
-        <line className={styles.beam} x1="152" y1="129" x2="194" y2="216" />
-        <line className={styles.beam} x1="164" y1="119" x2="234" y2="216" />
+        <line className={styles.crease} x1="158" y1="96" x2="158" y2="118" />
+        {/* The lamp: a short can aimed down the cone, lens at the front. */}
+        <g transform="rotate(58.7 158 124)">
+          <rect className={styles.sil} x="148" y="118" width="18" height="12" rx="2" />
+          <ellipse className={styles.sil} cx="166" cy="124" rx="2.5" ry="6" />
+        </g>
+        <line className={styles.beam} x1="157" y1="134" x2="194" y2="216" />
+        <line className={styles.beam} x1="167" y1="128" x2="234" y2="216" />
         <ellipse className={styles.crease} cx="214" cy="216" rx="20" ry="10" />
 
         {/* Mic stand alone in the light. */}
         <line className={styles.sil} x1="214" y1="214" x2="214" y2="198" />
         <circle className={styles.sil} cx="214" cy="196" r="3" />
-
-        <g className={styles.tassel}>
-          <line className={styles.crease} x1="200" y1="174" x2="200" y2="188" />
-          <circle className={styles.dot} cx="200" cy="192" r="3" />
-        </g>
       </svg>
     </div>
   );
