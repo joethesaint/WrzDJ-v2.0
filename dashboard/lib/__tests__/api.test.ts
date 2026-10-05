@@ -43,6 +43,32 @@ describe('ApiClient', () => {
     });
   });
 
+  describe('submitVibeVote', () => {
+    it('posts the score with the guest cookie', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'recorded', vibe_score: 100, vote_count: 1, created_at: '' }),
+      });
+
+      const result = await api.submitVibeVote('ABC123', 5);
+
+      expect(result.vibe_score).toBe(100);
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toContain('/api/public/events/ABC123/vibe');
+      expect(options.method).toBe('POST');
+      expect(options.credentials).toBe('include');
+      expect(JSON.parse(options.body)).toEqual({ score: 5 });
+    });
+
+    it('throws an ApiError carrying the status on cooldown', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 429 });
+
+      const err = await api.submitVibeVote('ABC123', 5).catch((e) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err.status).toBe(429);
+    });
+  });
+
   describe('getEvents', () => {
     it('fetches events with auth header', async () => {
       api.setToken('test-token');

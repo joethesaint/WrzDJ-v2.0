@@ -102,6 +102,17 @@ def post_now_playing(
             "source": payload.source or "bridge",
         },
     )
+    # A new track starts the Vibe Meter fresh; null tells displays to clear it.
+    publish_event(
+        payload.event_code,
+        "vibe_updated",
+        {
+            "vibe_score": None,
+            "vote_count": 0,
+            "track_title": payload.title,
+            "artist": payload.artist,
+        },
+    )
     return StatusResponse(status="ok")
 
 

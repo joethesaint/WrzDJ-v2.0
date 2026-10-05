@@ -21,6 +21,7 @@ from app.api import (
     sse,
     tidal,
     verify,
+    vibe,
     votes,
 )
 
@@ -37,6 +38,7 @@ api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(events.router, prefix="/events", tags=["events"])
 api_router.include_router(requests.router, prefix="/requests", tags=["requests"])
 api_router.include_router(votes.router, prefix="/requests", tags=["votes"])
+api_router.include_router(vibe.router, prefix="/public/events", tags=["vibe"])
 api_router.include_router(search.router, prefix="/search", tags=["search"])
 api_router.include_router(setbuilder.router, prefix="/setbuilder", tags=["setbuilder"])
 api_router.include_router(setbuilder_share.router, prefix="/setbuilder", tags=["setbuilder"])

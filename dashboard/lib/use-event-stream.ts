@@ -14,6 +14,13 @@ interface EventStreamHandlers {
     deck_count?: number | null;
     uptime_seconds?: number | null;
   }) => void;
+  /** `vibe_score` is null when a new track clears the meter. */
+  onVibeUpdated?: (data: {
+    vibe_score: number | null;
+    vote_count: number;
+    track_title?: string | null;
+    artist?: string | null;
+  }) => void;
 }
 
 const INITIAL_RETRY_MS = 1000;
@@ -72,6 +79,9 @@ export function useEventStream(
     });
     es.addEventListener('bridge_status_changed', (e) => {
       handlersRef.current.onBridgeStatusChanged?.(JSON.parse(e.data));
+    });
+    es.addEventListener('vibe_updated', (e) => {
+      handlersRef.current.onVibeUpdated?.(JSON.parse(e.data));
     });
   }, [eventCode]);
 

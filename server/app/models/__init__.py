@@ -26,6 +26,7 @@ from app.models.system_settings import SystemSettings
 from app.models.track import Track
 from app.models.track_vibe import TrackVibe, TrackVibeOverride
 from app.models.user import User
+from app.models.vibe_event import VibeEvent
 
 __all__ = [
     "ActivityLog",
@@ -64,4 +65,5 @@ __all__ = [
     "TrackVibe",
     "TrackVibeOverride",
     "User",
+    "VibeEvent",
 ]

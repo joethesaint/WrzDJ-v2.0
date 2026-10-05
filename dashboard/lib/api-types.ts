@@ -36,6 +36,7 @@ export type GuestNowPlaying = Schemas['GuestNowPlaying'];
 export type GuestRequestListResponse = Schemas['GuestRequestListResponse'];
 export type MyRequestInfo = Schemas['MyRequestInfo'];
 export type MyRequestsResponse = Schemas['MyRequestsResponse'];
+export type VibeVoteResponse = Schemas['VibeVoteResponse'];
 export type HasRequestedResponse = Schemas['HasRequestedResponse'];
 export type VoteResponse = Schemas['VoteResponse'];
 export type KioskDisplay = Schemas['KioskDisplayResponse'];

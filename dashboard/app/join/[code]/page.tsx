@@ -28,6 +28,16 @@ const PAGE_SIZE = 100;
 const ACCENT = '#00f0ff';
 const ACCENT2 = '#ff2bd6';
 
+/** Guest Vibe Meter buttons, low to high. Matches the server's 3s per-guest cooldown. */
+const VIBE_OPTIONS = [
+  { score: 1, emoji: '😴', label: 'Chill' },
+  { score: 2, emoji: '😐', label: 'Fair' },
+  { score: 3, emoji: '🙂', label: 'Good' },
+  { score: 4, emoji: '🔥', label: 'Fire' },
+  { score: 5, emoji: '🚀', label: 'Hype' },
+] as const;
+const VIBE_COOLDOWN_MS = 3000;
+
 /* Deterministic gradient for songs without artwork */
 const GRADIENTS = [
   'linear-gradient(135deg, #ff006e, #8338ec, #3a86ff)',
@@ -101,6 +111,11 @@ export default function JoinEventPage() {
   const [submitIsDuplicate, setSubmitIsDuplicate] = useState(false);
   const [submitVoteCount, setSubmitVoteCount] = useState(0);
   const [sortByVibes, setSortByVibes] = useState(false);
+
+  /* Vibe Meter */
+  const [liveVibeScore, setLiveVibeScore] = useState<number | null>(null);
+  const [myVibeScore, setMyVibeScore] = useState<number | null>(null);
+  const [vibeCoolingDown, setVibeCoolingDown] = useState(false);
 
   /* My Requests tracking */
   const [myRequestIds, setMyRequestIds] = useState<Set<number>>(new Set());
@@ -290,9 +305,31 @@ export default function JoinEventPage() {
         setMyRequestsRefreshKey((k) => k + 1);
       }
     },
-    onNowPlayingChanged: () => { loadRequestsRef.current(); },
+    onNowPlayingChanged: () => {
+      loadRequestsRef.current();
+      setMyVibeScore(null);
+    },
     onRequestsBulkUpdate: () => { loadRequestsRef.current(); },
+    onVibeUpdated: (data) => { setLiveVibeScore(data.vibe_score); },
   });
+
+  const handleVibeVote = async (score: number) => {
+    if (vibeCoolingDown) return;
+    setMyVibeScore(score);
+    setVibeCoolingDown(true);
+    setTimeout(() => setVibeCoolingDown(false), VIBE_COOLDOWN_MS);
+    try {
+      const res = await api.submitVibeVote(code, score);
+      setLiveVibeScore(res.vibe_score);
+    } catch (err) {
+      setMyVibeScore(null);
+      if (err instanceof ApiError && err.status === 409) {
+        setToast({ message: 'Voting opens when the next song starts', type: 'info' });
+      } else if (!(err instanceof ApiError && err.status === 429)) {
+        setToast({ message: 'Could not send your vibe', type: 'warning' });
+      }
+    }
+  };
 
   /* Sorted leaderboard with optimistic vote deltas */
   const leaderboardSorted = useMemo(() => {
@@ -639,16 +676,53 @@ export default function JoinEventPage() {
               )}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
                 <span style={{ fontSize: 10.3, fontFamily: 'var(--font-mono, monospace)', fontWeight: 700, color: ACCENT, letterSpacing: 1.6 }}>
                   Now Playing
                 </span>
+                {liveVibeScore !== null && (
+                  <span data-testid="vibe-score" style={{ fontSize: 10, fontFamily: 'var(--font-mono, monospace)', color: ACCENT, background: 'rgba(0, 240, 255, 0.12)', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>
+                    {liveVibeScore}% ENERGY
+                  </span>
+                )}
               </div>
               <div style={{ fontSize: 17.6, fontWeight: 700, letterSpacing: -0.25, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {nowPlaying.title}
               </div>
               <div style={{ fontSize: 14, color: subFg, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {nowPlaying.artist}
+              </div>
+
+              <div role="group" aria-label="Rate the vibe" style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, paddingTop: 6, borderTop: `1px solid ${border}` }}>
+                <span style={{ fontSize: 10, fontFamily: 'var(--font-mono, monospace)', color: subFg, letterSpacing: 1 }}>VIBE:</span>
+                {VIBE_OPTIONS.map((v) => {
+                  const isSelected = myVibeScore === v.score;
+                  return (
+                    <button
+                      key={v.score}
+                      type="button"
+                      onClick={() => handleVibeVote(v.score)}
+                      disabled={vibeCoolingDown}
+                      aria-pressed={isSelected}
+                      aria-label={`${v.label} (${v.score} of 5)`}
+                      title={v.label}
+                      style={{
+                        background: isSelected ? 'rgba(0, 240, 255, 0.25)' : 'rgba(255, 255, 255, 0.05)',
+                        border: isSelected ? `1px solid ${ACCENT}` : `1px solid ${border}`,
+                        borderRadius: 6,
+                        padding: '3px 6px',
+                        cursor: vibeCoolingDown ? 'default' : 'pointer',
+                        opacity: vibeCoolingDown && !isSelected ? 0.4 : 1,
+                        fontSize: 13,
+                        lineHeight: 1,
+                        transform: isSelected ? 'scale(1.15)' : 'scale(1)',
+                        transition: 'transform 0.15s ease, background 0.15s ease, opacity 0.15s ease',
+                      }}
+                    >
+                      {v.emoji}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>

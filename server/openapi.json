@@ -11510,6 +11510,80 @@
         "title": "VibeEnrichmentResult",
         "type": "object"
       },
+      "VibeVoteRequest": {
+        "properties": {
+          "score": {
+            "description": "Guest vibe rating, 1 (low) to 5 (high)",
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Score",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "score"
+        ],
+        "title": "VibeVoteRequest",
+        "type": "object"
+      },
+      "VibeVoteResponse": {
+        "properties": {
+          "artist": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artist"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "track_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Track Title"
+          },
+          "vibe_score": {
+            "description": "Time-weighted 0..100 rolling score",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Vibe Score",
+            "type": "integer"
+          },
+          "vote_count": {
+            "description": "Votes in the rolling window",
+            "minimum": 0.0,
+            "title": "Vote Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "artist",
+          "created_at",
+          "status",
+          "track_title",
+          "vibe_score",
+          "vote_count"
+        ],
+        "title": "VibeVoteResponse",
+        "type": "object"
+      },
       "VibeWindowModel": {
         "description": "A named region of the set timeline, in seconds.",
         "properties": {
@@ -17766,6 +17840,61 @@
         "summary": "Event Stream",
         "tags": [
           "sse"
+        ]
+      }
+    },
+    "/api/public/events/{code}/vibe": {
+      "post": {
+        "description": "Record a guest's 1..5 vibe vote and broadcast the new rolling score.\n\nThe per-guest cooldown is the real limit. The per-IP limit is only a flood\nguard, set high because a venue's guests often share one public IP.",
+        "operationId": "vote_event_vibe_api_public_events__code__vibe_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "maxLength": 10,
+              "minLength": 4,
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VibeVoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VibeVoteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Vote Event Vibe",
+        "tags": [
+          "vibe"
         ]
       }
     },

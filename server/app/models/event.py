@@ -55,6 +55,12 @@ class Event(Base):
         Boolean, default=True, nullable=False, server_default="1"
     )
 
+    # Vibe Meter: keep guest votes cast while no track is playing, marked "no song".
+    # Off by default: such votes are rejected.
+    vibe_keep_no_song: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="0"
+    )
+
     # Kiosk display-only mode (hide request button, enable auto-scroll)
     kiosk_display_only: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, server_default="0"

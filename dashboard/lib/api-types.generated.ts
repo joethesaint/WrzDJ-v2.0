@@ -2219,6 +2219,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/public/events/{code}/vibe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Vote Event Vibe
+         * @description Record a guest's 1..5 vibe vote and broadcast the new rolling score.
+         *
+         *     The per-guest cooldown is the real limit. The per-IP limit is only a flood
+         *     guard, set high because a venue's guests often share one public IP.
+         */
+        post: operations["vote_event_vibe_api_public_events__code__vibe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/public/guest/identify": {
         parameters: {
             query?: never;
@@ -7875,6 +7898,38 @@ export interface components {
             llm_calls: number;
             vibes: components["schemas"]["PoolVibesState"];
         };
+        /** VibeVoteRequest */
+        VibeVoteRequest: {
+            /**
+             * Score
+             * @description Guest vibe rating, 1 (low) to 5 (high)
+             */
+            score: number;
+        };
+        /** VibeVoteResponse */
+        VibeVoteResponse: {
+            /** Artist */
+            artist: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Status */
+            status: string;
+            /** Track Title */
+            track_title: string | null;
+            /**
+             * Vibe Score
+             * @description Time-weighted 0..100 rolling score
+             */
+            vibe_score: number;
+            /**
+             * Vote Count
+             * @description Votes in the rolling window
+             */
+            vote_count: number;
+        };
         /**
          * VibeWindowModel
          * @description A named region of the set timeline, in seconds.
@@ -11806,6 +11861,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    vote_event_vibe_api_public_events__code__vibe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VibeVoteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VibeVoteResponse"];
                 };
             };
             /** @description Validation Error */
