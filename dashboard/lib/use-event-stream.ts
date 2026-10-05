@@ -14,6 +14,7 @@ interface EventStreamHandlers {
     deck_count?: number | null;
     uptime_seconds?: number | null;
   }) => void;
+  onVibeUpdated?: (data: { score: number | null }) => void;
 }
 
 const INITIAL_RETRY_MS = 1000;
@@ -72,6 +73,9 @@ export function useEventStream(
     });
     es.addEventListener('bridge_status_changed', (e) => {
       handlersRef.current.onBridgeStatusChanged?.(JSON.parse(e.data));
+    });
+    es.addEventListener('vibe_updated', (e) => {
+      handlersRef.current.onVibeUpdated?.(JSON.parse(e.data));
     });
   }, [eventCode]);
 

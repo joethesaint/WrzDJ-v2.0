@@ -101,6 +101,9 @@ export default function KioskDisplayPage() {
   const [stagelinqNowPlaying, setStagelinqNowPlaying] = useState<NowPlayingInfo | null>(null);
   const [playHistory, setPlayHistory] = useState<PlayHistoryItem[]>([]);
 
+  // Vibe Meter
+  const [vibeScore, setVibeScore] = useState<number | null>(null);
+
   // Sticky now-playing: keep showing last track for 10s after it goes null
   const [lastKnownNowPlaying, setLastKnownNowPlaying] = useState<NowPlayingInfo | null>(null);
   const [nowPlayingFading, setNowPlayingFading] = useState(false);
@@ -179,6 +182,7 @@ export default function KioskDisplayPage() {
     onNowPlayingChanged: () => { loadDisplayRef.current(); },
     onRequestsBulkUpdate: () => { loadDisplayRef.current(); },
     onBridgeStatusChanged: () => { loadDisplayRef.current(); },
+    onVibeUpdated: (data) => { setVibeScore(data.score); },
   });
 
   useEffect(() => {
@@ -506,13 +510,23 @@ export default function KioskDisplayPage() {
                 ))}
               </div>
 
-              {/* RESERVED VIBE METER SPOT (Council Lock Q4 / D8): Fixed 64px, empty until 1B */}
-              <div
-                className="kiosk-reserved-meter-spot"
-                data-testid="kiosk-reserved-meter-spot"
-                data-slot="vibe-meter"
-                aria-hidden="true"
-              />
+              {/* VIBE METER (1B) */}
+              {vibeScore !== null ? (
+                <div className="kiosk-vibe-meter">
+                  <div 
+                    className="kiosk-vibe-meter-fill" 
+                    style={{ width: `${Math.max(0, Math.min(100, vibeScore))}%` }} 
+                  />
+                  <div className="kiosk-vibe-meter-overlay" />
+                </div>
+              ) : (
+                <div
+                  className="kiosk-reserved-meter-spot"
+                  data-testid="kiosk-reserved-meter-spot"
+                  data-slot="vibe-meter"
+                  aria-hidden="true"
+                />
+              )}
             </div>
           )}
 
@@ -1196,6 +1210,32 @@ export default function KioskDisplayPage() {
         }
         .kiosk-just-played-sep {
           color: rgba(255,255,255,0.3);
+        }
+        
+        /* ── 1B: Vibe Meter ── */
+        .kiosk-vibe-meter {
+          height: 64px;
+          margin-top: 24px;
+          border-radius: 12px;
+          background: rgba(255,255,255,0.05);
+          position: relative;
+          overflow: hidden;
+          box-shadow: inset 0 2px 10px rgba(0,0,0,0.5);
+        }
+        .kiosk-vibe-meter-fill {
+          height: 100%;
+          background: linear-gradient(90deg, #3b82f6 0%, #a855f7 50%, #ef4444 100%);
+          transition: width 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+          border-radius: 12px;
+          box-shadow: 0 0 20px rgba(168, 85, 247, 0.4);
+        }
+        .kiosk-vibe-meter-overlay {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(180deg, rgba(255,255,255,0.1) 0%, transparent 50%, rgba(0,0,0,0.2) 100%);
+          border-radius: 12px;
+          border: 1px solid rgba(255,255,255,0.15);
+          pointer-events: none;
         }
         .kiosk-just-played-artist {
           color: rgba(255,255,255,0.6);
