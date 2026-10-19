@@ -32,8 +32,9 @@ cp deploy/.env.example deploy/.env
 #   SPOTIFY_*, TIDAL_*, BEATPORT_*, TURNSTILE_*, RESEND_*, BRIDGE_API_KEY
 
 # 3. Deploy
-./deploy/deploy-ghcr.sh              # pulls latest, restarts stack, waits for /health
+./deploy/deploy-ghcr.sh              # pulls stable (newest release), restarts stack, waits for /health
 ./deploy/deploy-ghcr.sh v2026.05.16  # or pin a specific release
+./deploy/deploy-ghcr.sh latest       # or run HEAD of main (unreleased)
 ```
 
 ### Verify the deploy
@@ -43,7 +44,11 @@ curl -sf http://127.0.0.1:8000/health   # expect: {"status":"ok"}
 docker compose -f deploy/docker-compose.ghcr.yml ps  # all "Up (healthy)"
 ```
 
-Images are published automatically on every push to `main` and on every `v*` tag:
+Images are published automatically on every push to `main` and on every `v*` tag.
+`vYYYY.MM.DD` is built on a release tag and `stable` is promoted to it once both the
+api and web images exist, so `stable` is always a matching pair; `latest` / `main`
+follow HEAD of main. To seed `stable` for the first time or roll it back to an
+earlier release, run the *Promote Stable* workflow from the Actions tab with the tag:
 - [ghcr.io/wrzonance/wrzdj-api](https://github.com/wrzonance/WrzDJ/pkgs/container/wrzdj-api)
 - [ghcr.io/wrzonance/wrzdj-web](https://github.com/wrzonance/WrzDJ/pkgs/container/wrzdj-web)
 

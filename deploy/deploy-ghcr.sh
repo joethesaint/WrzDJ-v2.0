@@ -4,13 +4,13 @@ set -euo pipefail
 # WrzDJ GHCR Deploy Script
 # Usage: ./deploy/deploy-ghcr.sh [VERSION]
 #
-# VERSION can be: latest, v2026.05.16, sha-a3f8c2b (default: latest)
+# VERSION can be: stable (newest release), latest (HEAD of main), v2026.05.16,
+# sha-a3f8c2b (default: stable)
 # Pulls pre-built images from GHCR and starts the stack.
 # For build-from-source deploys, use deploy/deploy.sh instead.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.ghcr.yml"
-VERSION="${1:-latest}"
 
 # Load env file if present
 if [ -f "$SCRIPT_DIR/.env" ]; then
@@ -20,16 +20,20 @@ if [ -f "$SCRIPT_DIR/.env" ]; then
   set +a
 fi
 
+# Precedence: argument, then WRZDJ_VERSION from .env, then the newest release.
+VERSION="${1:-${WRZDJ_VERSION:-stable}}"
 PORT_API="${PORT_API:-8000}"
+
+# Pull first: a missing or misspelled version fails here, while the current
+# stack is still serving and before the database has been touched.
+echo "==> Pulling WrzDJ $VERSION images..."
+WRZDJ_VERSION="$VERSION" docker compose -f "$COMPOSE_FILE" pull api web
 
 # Must run before anything else touches the stack. A compatible volume is a
 # no-op; an older PostgreSQL major is upgraded (old data kept in a backup
 # volume); anything unrecognised aborts while the current stack keeps serving.
 echo "==> Checking PostgreSQL data volume..."
 WRZDJ_VERSION="$VERSION" "$SCRIPT_DIR/scripts/upgrade-postgres-volume.sh" "$COMPOSE_FILE"
-
-echo "==> Pulling WrzDJ $VERSION images..."
-WRZDJ_VERSION="$VERSION" docker compose -f "$COMPOSE_FILE" pull api web
 
 echo "==> Stopping existing containers..."
 docker compose -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
