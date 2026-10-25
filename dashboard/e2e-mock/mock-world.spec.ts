@@ -10,7 +10,13 @@ const unmocked: string[] = [];
 
 test.beforeEach(async ({ page }) => {
   unmocked.length = 0;
-  await page.addInitScript(() => localStorage.setItem('token', 'mock-jwt-token'));
+  // The DJ session is an HttpOnly cookie (#754); the app only probes /me when
+  // this non-secret marker says a login happened on this browser. Set it so the
+  // AuthProvider calls /api/auth/me (mocked → MOCK_USER) instead of bouncing to
+  // /login. SESSION_HINT_KEY = 'wrzdj_session_hint' in lib/auth.tsx.
+  await page.addInitScript(() =>
+    localStorage.setItem('wrzdj_session_hint', 'mock-session'),
+  );
   page.on('console', (m) => {
     if (m.text().startsWith('[mock] no mock for')) unmocked.push(m.text());
   });
@@ -41,7 +47,10 @@ test('event page shows the live queue, now playing and seeded vibe', async ({ pa
   await expect(page.getByText('All (18)')).toBeVisible();
   await expect(page.getByText('Played (5)')).toBeVisible();
   await expect(page.getByText('Calm Down').first()).toBeVisible();
-  await expect(page.getByText(/\(\d+ votes\)/)).not.toHaveText(/\(0 votes\)/, { timeout: 5000 });
+  // Requests carry seeded upvotes; the DJ event page renders them as "N votes"
+  // (e.g. "9 votes"), not the parenthesised "(N votes)" an older UI used. Assert
+  // at least one request shows a non-zero count.
+  await expect(page.getByText(/\b[1-9]\d* votes?\b/).first()).toBeVisible({ timeout: 5000 });
 });
 
 test('accepting a request updates the status counts', async ({ page }) => {

@@ -149,6 +149,7 @@ const routes: [string, RegExp, Handler][] = [
   // --- auth ---
   ['POST', /^\/api\/auth\/login$/, () => ok({ access_token: 'mock-jwt-token' })],
   ['GET', /^\/api\/auth\/me$/, () => ok(MOCK_USER)],
+  ['GET', /^\/api\/auth\/settings$/, () => ok({ registration_enabled: true, turnstile_site_key: '' })],
   ['POST', /^\/api\/auth\/help-seen$/, ({ body }) => {
     if (body?.page && !MOCK_USER.help_pages_seen.includes(body.page)) MOCK_USER.help_pages_seen.push(body.page);
     return noContent();
