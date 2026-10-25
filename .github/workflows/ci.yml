@@ -98,6 +98,18 @@ jobs:
           ENV: development
         run: alembic upgrade head && alembic check
 
+      # The frontend job regenerates the TypeScript types from server/openapi.json,
+      # but nothing checks that file against the app itself. Regenerate it with the
+      # same script developers use, so a route or schema change without a re-export
+      # fails here instead of drifting silently.
+      - name: Check committed OpenAPI schema is current
+        env:
+          JWT_SECRET: test-secret-key
+          ENV: development
+        run: |
+          python scripts/export_openapi.py
+          git diff --exit-code -- openapi.json
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
