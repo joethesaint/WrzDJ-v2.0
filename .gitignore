@@ -82,3 +82,17 @@ notes/
 .claude/
 .superpowers/
 .worktrees/
+
+# AI Agent Council, Skills & Prompts (Never commit to repo)
+.agents/
+.gemini/
+DIRECTOR_UPDATE*.md
+council-threads/
+*.prompt.md
+patch_meter.cjs
+kiosk-preview-*.png
+
+# Local one-off apply scripts & LAN launchers (never track)
+apply_*.cjs
+*.bat
+

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import EventExpiredDisplay from '@/components/EventExpiredDisplay';
 import { useParams } from 'next/navigation';
 import { api, ApiError, HumanVerificationRequiredError, PublicEvent, GuestNowPlaying, GuestRequestInfo, PUBLIC_PAGE_MAX, SearchResult } from '@/lib/api';
 import { useEventStream } from '@/lib/use-event-stream';
@@ -17,6 +18,7 @@ import Toast from './components/Toast';
 import TickNumber from './components/TickNumber';
 import Sparks from './components/Sparks';
 import SongDetailSheet from './components/SongDetailSheet';
+import { GuestVibeFader } from '@/components/vibe/GuestVibeFader';
 
 const POLL_INTERVAL_MS = 10000;
 const BACKOFF_INTERVAL_MS = 60000;
@@ -101,6 +103,12 @@ export default function JoinEventPage() {
   const [submitIsDuplicate, setSubmitIsDuplicate] = useState(false);
   const [submitVoteCount, setSubmitVoteCount] = useState(0);
   const [sortByVibes, setSortByVibes] = useState(false);
+
+  /* Vibe Meter */
+  const [liveVibeScore, setLiveVibeScore] = useState<number | null>(null);
+  const [liveVibeCount, setLiveVibeCount] = useState(0);
+  const [myVibeScore, setMyVibeScore] = useState<number | null>(null);
+  const [vibeSubmitting, setVibeSubmitting] = useState(false);
 
   /* My Requests tracking */
   const [myRequestIds, setMyRequestIds] = useState<Set<number>>(new Set());
@@ -290,9 +298,32 @@ export default function JoinEventPage() {
         setMyRequestsRefreshKey((k) => k + 1);
       }
     },
-    onNowPlayingChanged: () => { loadRequestsRef.current(); },
+    onNowPlayingChanged: () => {
+      loadRequestsRef.current();
+      setMyVibeScore(null);
+    },
     onRequestsBulkUpdate: () => { loadRequestsRef.current(); },
+    onVibeUpdated: (data) => {
+      setLiveVibeScore(data.vibe_score);
+      setLiveVibeCount(data.vote_count);
+    },
   });
+
+  const handleVibeVote = async (score: number) => {
+    if (vibeSubmitting) return;
+    setMyVibeScore(score);
+    setVibeSubmitting(true);
+    try {
+      const res = await api.submitVibeVote(code, score);
+      setLiveVibeScore(res.vibe_score);
+      setLiveVibeCount(res.vote_count);
+      setToast({ message: 'Vibe rating sent to DJ!', type: 'success' });
+    } catch {
+      // Best effort; preserve local feedback
+    } finally {
+      setVibeSubmitting(false);
+    }
+  };
 
   /* Sorted leaderboard with optimistic vote deltas */
   const leaderboardSorted = useMemo(() => {
@@ -491,19 +522,18 @@ export default function JoinEventPage() {
   if (error || !event) {
     const is410 = error?.status === 410;
     const is404 = error?.status === 404;
+    if (is410) {
+      return <EventExpiredDisplay />;
+    }
     return (
-      <div className="guest-tower" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
-        <div style={{ textAlign: 'center', maxWidth: 360 }}>
-          <div style={{ fontSize: 33.9, fontWeight: 800, letterSpacing: -0.6, marginBottom: 10 }}>
-            {is410 ? 'Event Expired' : is404 ? 'Event Not Found' : 'Oops!'}
-          </div>
-          <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 18.2 }}>
-            {is410
-              ? 'This event has ended and is no longer accepting requests.'
-              : is404
+      <div className="kiosk-container">
+        <div className="kiosk-error">
+          <h1>{is404 ? 'Event Not Found' : 'Error'}</h1>
+          <p>
+            {is404
                 ? 'This event does not exist.'
-                : error?.message || 'Event not found or has expired.'}
-          </div>
+                : error?.message || 'An error occurred.'}
+          </p>
         </div>
       </div>
     );
@@ -639,16 +669,30 @@ export default function JoinEventPage() {
               )}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
                 <span style={{ fontSize: 10.3, fontFamily: 'var(--font-mono, monospace)', fontWeight: 700, color: ACCENT, letterSpacing: 1.6 }}>
                   Now Playing
                 </span>
+                {liveVibeScore !== null && (
+                  <span style={{ fontSize: 10, fontFamily: 'var(--font-mono, monospace)', color: ACCENT, background: 'rgba(0, 240, 255, 0.12)', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>
+                    {liveVibeScore}% ENERGY
+                  </span>
+                )}
               </div>
               <div style={{ fontSize: 17.6, fontWeight: 700, letterSpacing: -0.25, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {nowPlaying.title}
               </div>
               <div style={{ fontSize: 14, color: subFg, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {nowPlaying.artist}
+              </div>
+
+              {/* Audience Vibe Rating Row */}
+              <div style={{ marginTop: 8, display: 'flex', justifyContent: 'center', paddingTop: 6, borderTop: `1px solid ${border}` }}>
+                <GuestVibeFader 
+                  onVote={handleVibeVote} 
+                  disabled={vibeSubmitting}
+                  initialScore={myVibeScore}
+                />
               </div>
             </div>
           </div>

@@ -19,6 +19,7 @@ import { useTabTitle } from '@/lib/tab-title';
 import { EventErrorCard } from '@/components/EventErrorCard';
 import { DeleteEventModal } from './components/DeleteEventModal';
 import { NowPlayingBadge } from './components/NowPlayingBadge';
+import { DjVuMeter } from '@/components/vibe/DjVuMeter';
 import { TidalLoginModal } from './components/TidalLoginModal';
 import { BeatportLoginModal } from './components/BeatportLoginModal';
 import { ServiceTrackPickerModal } from './components/ServiceTrackPickerModal';
@@ -131,6 +132,10 @@ export default function EventQueuePage() {
 
   // Inline action error (auto-dismissing)
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Vibe state
+  const [liveVibeScore, setLiveVibeScore] = useState<number | null>(null);
+  const [liveVibeCount, setLiveVibeCount] = useState<number>(0);
 
   // Tab state
   const [activeTab, setActiveTab] = useState<'songs' | 'manage' | 'pre-event'>('songs');
@@ -427,6 +432,10 @@ export default function EventQueuePage() {
         uptimeSeconds: data.uptime_seconds ?? null,
       });
       loadDataRef.current();
+    },
+    onVibeUpdated: (data) => {
+      setLiveVibeScore(data.vibe_score);
+      setLiveVibeCount(data.vote_count);
     },
   });
 
@@ -1031,9 +1040,14 @@ export default function EventQueuePage() {
             )}
           </div>
         </div>
-        {!isExpiredOrArchived && nowPlaying && (
-          <NowPlayingBadge nowPlaying={nowPlaying} />
-        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0, width: '320px' }}>
+          {!isExpiredOrArchived && nowPlaying && (
+            <NowPlayingBadge nowPlaying={nowPlaying} />
+          )}
+          {!isExpiredOrArchived && (
+            <DjVuMeter score={liveVibeScore} voteCount={liveVibeCount} />
+          )}
+        </div>
         <div style={{ textAlign: 'center' }}>
           <div className="code" style={{ fontSize: '2rem', color: isExpiredOrArchived ? 'var(--text-tertiary)' : 'var(--color-primary)' }}>
             {event.join_code}

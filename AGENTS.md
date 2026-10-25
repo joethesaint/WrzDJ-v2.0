@@ -1,8 +1,58 @@
 # WrzDJ — Claude Code Instructions
 
-Follows the global `~/.claude/rules` (code · workflow · security · agents). This file holds
-only WrzDJ-specific facts and overrides. Architecture: `ARCHITECTURE.md`. Security posture:
-`SECURITY.md`.
+This file holds WrzDJ-specific facts and overrides. Architecture: `ARCHITECTURE.md`. Security
+posture: `SECURITY.md`. (An older version referred to global `~/.claude/rules`; those files do
+not exist on the Director's machine, so this file and the vault are the rules.)
+
+## Read first: the vault (every agent, every session)
+
+Project decisions do not live in this repo. They live in the Obsidian vault at
+`C:/Users/PC/Desktop/vault_D/WrzDJ-vault/` (relative to this repo: `../WrzDJ-vault/`).
+**If it is not in the vault, it did not happen** (`charter/vault-first.md`).
+
+Before starting a task, read:
+1. `00 Home.md`: council roles, the current phase and the latest handoff.
+2. `Decisions.md`, plus every locked decision that touches the screens or files you will change.
+   When a decision file has an **Update** section, the newest update governs, not the heading.
+3. `live-context-index.md`: what has been addressed to you.
+4. `questions/open-questions.md` and `Parked.md`: do not build parked items or settle open
+   questions yourself. (`Open Questions.md` at the vault root is superseded; ignore it.)
+
+If something you're asked to do conflicts with a locked decision, stop and tell the Director
+rather than picking one.
+
+## Working folders: one agent, one worktree
+
+`vault_D/WrzDJ-v2.0` is the **Director's checkout**. Agents do not change it:
+- **Never** run `git checkout`, `git switch`, `git stash`, `git reset`, `git pull` or `git commit`
+  in `WrzDJ-v2.0`. Switching branches there replaces the files every other agent is reading and
+  editing (2026-10-05: two branch switches stashed another agent's uncommitted work).
+- Work in your own worktree: `git worktree add ../WrzDJ-worktrees/<agent>-<task> -b <prefix>/<task>`
+  from `WrzDJ-v2.0`, then do everything inside that folder.
+- Never use bare `git stash` / `git stash pop`: the stash list is shared by every worktree. Set
+  work aside with a WIP commit on your own branch.
+- Reading files in `WrzDJ-v2.0` and running its dev server are fine.
+
+## Before any UI work (screens, components, kiosk, mock data shown on screen)
+
+UI work is never only "does it render". Every screen change must:
+- **Conform to the locked decisions** for that screen (e.g. kiosk theme, 65/35 hero split, 2b
+  recently-played placement, the reserved vibe-meter spot). Cite the decision file you checked.
+- **Pass a heuristic review.** Claude: invoke the `ux-heuristics` and `refactoring-ui` skills
+  (and `design-everyday-things` for interaction problems). Other agents: apply Nielsen's 10
+  heuristics and the council principles below, and say which ones you checked.
+- **Follow the council principles:** no dead controls on public displays; one hero per screen
+  (now-playing on the kiosk); be specific (show numbers, not adjectives); kiosk shows only what a
+  guest across the room can use.
+- **Report evidence**: screenshots at 1280 and 1920 for the kiosk, phone width for guest pages,
+  plus the findings, before calling the work done.
+
+## VaultKeeper role (activated by the Director)
+
+When the Director's message contains the word **"vaultkeeper"** (any capitalisation), the agent
+reading it **is the VaultKeeper for the rest of that session**, whatever its default role.
+The full role is in `../WrzDJ-vault/charter/vaultkeeper.md`. Read it before doing anything else
+that session.
 
 WrzDJ is a full-stack DJ song-request system: FastAPI backend (`server/`) + Next.js/React 19
 frontend (`dashboard/`) + Node bridge for DJ equipment (`bridge/`) + Electron bridge app
