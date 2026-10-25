@@ -17,6 +17,9 @@ const nextConfig = {
   // Hide the dev-only indicator (lower-left circle) so it doesn't appear in screenshots.
   devIndicators: false,
   allowedDevOrigins: ['192.168.*.*'],
+  turbopack: {
+    root: __dirname,
+  },
   async redirects() {
     return [
       // DJ AI connector/model settings moved into the account page (#357).
