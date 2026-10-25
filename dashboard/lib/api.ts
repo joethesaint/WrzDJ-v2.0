@@ -233,6 +233,8 @@ export type {
   UnresolvedTrack,
 } from './api-types';
 
+import { isDevAuthBypassActive } from './devAuthBypass';
+
 // ========== Admin LLM audit trail filters (issue #341) ==========
 
 export interface AdminLlmAuditFilters {
@@ -474,6 +476,49 @@ function getApiUrl(): string {
 }
 
 /**
+ * DEV-ONLY: route a request through the in-browser mock backend (lib/mock)
+ * when dev-auth-bypass is active, so the UI runs with a seeded world and no
+ * server (see playwright-mock.config.ts). Returns a synthetic Response the
+ * normal fetch paths handle as if it came from the backend, or null to fall
+ * through to the real backend. The mock + seed are dynamically imported, so
+ * they are code-split out of a normal (non-bypass) build.
+ *
+ * Accepts a relative path or a full URL; a path the mock doesn't know logs
+ * "[mock] no mock for <METHOD> <path>" and returns null.
+ */
+async function tryMockResponse(
+  method: string,
+  pathOrUrl: string,
+  body?: BodyInit | null,
+): Promise<Response | null> {
+  if (!isDevAuthBypassActive()) return null;
+  const { handleMockRequest } = await import('./mock/router');
+  const rel = pathOrUrl.replace(getApiUrl(), '');
+  const [pathname, search = ''] = rel.split('?');
+  const query = new URLSearchParams(search);
+  let parsed: unknown;
+  if (typeof body === 'string' && body) {
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      parsed = body;
+    }
+  }
+  const res = handleMockRequest(method.toUpperCase(), pathname, query, parsed);
+  if (!res) {
+    console.warn(`[mock] no mock for ${method.toUpperCase()} ${pathname}`);
+    return null;
+  }
+  if (res.status === 204) {
+    return new Response(null, { status: 204 });
+  }
+  return new Response(JSON.stringify(res.body ?? null), {
+    status: res.status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+/**
  * CSRF header for cookie-authenticated requests (issue #754). The DJ session now
  * lives in an HttpOnly cookie the browser attaches on its own, so the server only
  * honours that cookie when this custom header is present too: a cross-site page
@@ -527,11 +572,13 @@ class ApiClient {
     }
     headers.set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE);
 
-    const response = await fetch(`${getApiUrl()}${path}`, {
-      credentials: 'include',
-      ...options,
-      headers,
-    });
+    const response =
+      (await tryMockResponse(options.method ?? 'GET', path, options.body)) ??
+      (await fetch(`${getApiUrl()}${path}`, {
+        credentials: 'include',
+        ...options,
+        headers,
+      }));
 
     if (!response.ok) {
       if (response.status === 401 && this.onUnauthorized) {
@@ -560,7 +607,9 @@ class ApiClient {
     headers.set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE);
 
     const url = path.startsWith('http') ? path : `${getApiUrl()}${path}`;
-    const response = await fetch(url, { credentials: 'include', ...init, headers });
+    const response =
+      (await tryMockResponse(init.method ?? 'GET', url, init.body)) ??
+      (await fetch(url, { credentials: 'include', ...init, headers }));
 
     if (!response.ok) {
       if (response.status === 401 && this.onUnauthorized) {
@@ -578,7 +627,7 @@ class ApiClient {
    * Throws ApiError on non-OK responses.
    */
   private async publicFetch<T>(url: string): Promise<T> {
-    const response = await fetch(url);
+    const response = (await tryMockResponse('GET', url)) ?? (await fetch(url));
     if (!response.ok) {
       const error = await response.json().catch(() => ({ detail: 'Request failed' }));
       throw apiErrorFromBody(error, response.status);
