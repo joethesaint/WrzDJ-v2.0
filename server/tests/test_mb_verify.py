@@ -3,6 +3,8 @@
 from datetime import timedelta
 from unittest.mock import patch
 
+import pytest
+
 from app.core.time import utcnow
 from app.models.mb_artist_cache import MbArtistCache
 from app.services.recommendation.mb_verify import (
@@ -21,6 +23,7 @@ class TestVerifyArtistsBatch:
         result = verify_artists_batch(db, ["", "  "])
         assert result == {}
 
+    @pytest.mark.usefixtures("listenbrainz_popular")
     @patch("app.services.recommendation.mb_verify.check_artist_exists")
     def test_calls_api_for_uncached_artist(self, mock_check, db):
         mock_check.return_value = (True, "mbid-123")
@@ -36,6 +39,7 @@ class TestVerifyArtistsBatch:
         assert cached.verified is True
         assert cached.mbid == "mbid-123"
 
+    @pytest.mark.usefixtures("listenbrainz_popular")
     @patch("app.services.recommendation.mb_verify.check_artist_exists")
     def test_returns_cached_result_without_api_call(self, mock_check, db):
         # Pre-populate cache
@@ -61,6 +65,7 @@ class TestVerifyArtistsBatch:
         assert cached.verified is False
         assert cached.mbid is None
 
+    @pytest.mark.usefixtures("listenbrainz_popular")
     @patch("app.services.recommendation.mb_verify.check_artist_exists")
     def test_deduplicates_artist_names(self, mock_check, db):
         mock_check.return_value = (True, "mbid-456")
@@ -73,6 +78,7 @@ class TestVerifyArtistsBatch:
         assert result["Deadmau5"] is True
         assert result["DEADMAU5"] is True
 
+    @pytest.mark.usefixtures("listenbrainz_popular")
     @patch("app.services.recommendation.mb_verify.check_artist_exists")
     def test_mixed_cached_and_uncached(self, mock_check, db):
         # Pre-populate one entry
@@ -88,6 +94,7 @@ class TestVerifyArtistsBatch:
         # Only Daft Punk should trigger an API call
         mock_check.assert_called_once_with("daft punk")
 
+    @pytest.mark.usefixtures("listenbrainz_popular")
     @patch("app.services.recommendation.mb_verify.check_artist_exists")
     def test_multiple_uncached_artists(self, mock_check, db):
         mock_check.side_effect = [
