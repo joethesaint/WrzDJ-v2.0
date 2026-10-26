@@ -207,6 +207,39 @@ class TestListenBrainzGate:
 
     @patch("app.services.recommendation.mb_verify.check_artist_exists")
     @patch("app.services.listenbrainz.fetch_artist_popularity")
+    def test_lb_backfill_over_batch_limit_leaves_unchecked_artists_unknown(
+        self, mock_lb, mock_check, db
+    ):
+        """More than 100 unique artists: only the artists sent to ListenBrainz are checked.
+
+        51 tracks with two artists each give 102 artists. ListenBrainz is asked about at most
+        100; the other two were never checked, so they must stay unknown (None, pass through)
+        and must not be stored as zero listeners, which would reject them on every later request.
+        """
+        names = [f"Artist {i:03d}" for i in range(102)]
+        mock_check.side_effect = lambda name: (True, f"mbid-{name.lower()}")
+        mock_lb.side_effect = lambda mbids: {
+            m: {"total_listen_count": 5000, "total_user_count": LB_MIN_USER_COUNT + 50}
+            for m in mbids
+        }
+
+        result = verify_artists_batch(db, names)
+
+        sent = mock_lb.call_args.args[0]
+        assert mock_lb.call_count == 1
+        assert len(sent) == 100
+        assert all(result[n] is True for n in names)  # nobody rejected for lack of a check
+
+        rows = db.query(MbArtistCache).filter(MbArtistCache.artist_name.like("artist %")).all()
+        checked = [r for r in rows if r.mbid in sent]
+        unchecked = [r for r in rows if r.mbid not in sent]
+        assert len(checked) == 100
+        assert all(r.lb_user_count == LB_MIN_USER_COUNT + 50 for r in checked)
+        assert len(unchecked) == 2
+        assert all(r.lb_user_count is None and r.lb_listen_count is None for r in unchecked)
+
+    @patch("app.services.recommendation.mb_verify.check_artist_exists")
+    @patch("app.services.listenbrainz.fetch_artist_popularity")
     def test_lb_zero_listeners_rejects(self, mock_lb, mock_check, db):
         """Artist confirmed with 0 LB listeners should be rejected."""
         mock_check.return_value = (True, "mbid-stock")
