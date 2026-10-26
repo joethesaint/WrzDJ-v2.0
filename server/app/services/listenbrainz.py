@@ -48,7 +48,7 @@ def fetch_artist_popularity(mbids: list[str]) -> dict[str, dict]:
     try:
         with httpx.Client(timeout=HTTP_TIMEOUT) as client:
             response = client.post(
-                f"{LISTENBRAINZ_BASE}/1/popularity/artists",
+                f"{LISTENBRAINZ_BASE}/1/popularity/artist",
                 json={"artist_mbids": mbids[:100]},
                 headers={"User-Agent": USER_AGENT, "Content-Type": "application/json"},
             )
