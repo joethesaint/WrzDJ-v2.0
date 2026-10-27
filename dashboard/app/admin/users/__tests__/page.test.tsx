@@ -1,8 +1,13 @@
+import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import AdminUsersPage from '../page';
 
 // Mock HelpContext
+vi.mock('@/components/PageControls', () => ({
+  PageControls: ({ children }: { children?: React.ReactNode }) => <div data-testid="page-controls">{children}</div>,
+}));
+
 vi.mock('@/lib/help/HelpContext', () => ({
   useHelp: () => ({
     helpMode: false,
@@ -76,6 +81,7 @@ describe('AdminUsersPage', () => {
 
     expect(screen.getByText('User Management')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create User' })).toBeInTheDocument();
+    expect(screen.getByTestId('page-controls')).toBeInTheDocument();
   });
 
   it('displays users in a table', async () => {

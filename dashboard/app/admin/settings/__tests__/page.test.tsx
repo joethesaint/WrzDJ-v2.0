@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import React from 'react';
 
+vi.mock('@/components/PageControls', () => ({
+  PageControls: ({ children }: { children?: React.ReactNode }) => <div data-testid="page-controls">{children}</div>,
+}));
+
 vi.mock('@/lib/api', () => ({
   api: {
     getAdminSettings: vi.fn(),
@@ -77,6 +81,7 @@ describe('AdminSettingsPage', () => {
 
     expect(screen.getByText('System Settings')).toBeInTheDocument();
     expect(screen.getByLabelText(/Search Rate Limit/)).toHaveValue(10);
+    expect(screen.getByTestId('page-controls')).toBeInTheDocument();
   });
 
   it('shows error when settings fail to load', async () => {
