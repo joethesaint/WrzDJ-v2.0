@@ -19,6 +19,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -64,6 +65,18 @@ class Set(Base):
     )
 
     tidal_playlist_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    spotify_playlist_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    apple_music_playlist_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    apple_music_export_pending: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    apple_music_export_uncertain: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    apple_music_export_attempt_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    apple_music_export_recovery_playlist_id: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )
     exported_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -150,6 +163,7 @@ class SetCollaborator(Base):
     """Modeled v1, enforced v3."""
 
     __tablename__ = "set_collaborators"
+    __table_args__ = (UniqueConstraint("set_id", "user_id", name="uq_set_collaborators_set_user"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     set_id: Mapped[int] = mapped_column(

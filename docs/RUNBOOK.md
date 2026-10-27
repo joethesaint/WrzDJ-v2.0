@@ -167,6 +167,13 @@ cat backup.sql | docker compose -f deploy/docker-compose.yml exec -T db \
   psql -U wrzdj wrzdj
 ```
 
+### PostgreSQL Major-Version Upgrade
+
+The deploy scripts upgrade an older PostgreSQL data volume automatically
+(`deploy/scripts/upgrade-postgres-volume.sh`: dump, backup volume, restore, rollback
+on failure). Details and manual rollback: "Upgrading PostgreSQL (16 -> 18)" in
+`deploy/DEPLOYMENT.md`.
+
 ### Run Migrations
 
 ```bash

@@ -4,9 +4,10 @@
  * Tidal export, file downloads, M3U/txt dual-button, pool notice.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import type { ExportPreflight, ExportTidalResult, SetDetail } from '@/lib/api-types';
+import type { ExportPreflight, ExportSpotifyResult, ExportTidalResult, SetDetail } from '@/lib/api-types';
+import { ApiError } from '@/lib/api';
 import ExportModal from '../ExportModal';
 
 // ---- Mock the API singleton ----
@@ -14,10 +15,19 @@ import ExportModal from '../ExportModal';
 const mockApi = vi.hoisted(() => ({
   exportPreflight: vi.fn(),
   exportSetToTidal: vi.fn(),
+  exportSetToSpotify: vi.fn(),
+  startSpotifyAuthorization: vi.fn(),
+  getAppleMusicDeveloperToken: vi.fn(),
+  linkAppleMusicAccount: vi.fn(),
+  exportSetToAppleMusic: vi.fn(),
+  reconcileAppleMusicExport: vi.fn(),
   exportSetFile: vi.fn(),
 }));
 
-vi.mock('@/lib/api', () => ({ api: mockApi }));
+vi.mock('@/lib/api', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/lib/api')>()),
+  api: mockApi,
+}));
 
 // ---- DOM helpers for download ----
 // We stub URL.createObjectURL / revokeObjectURL + HTMLAnchorElement.prototype.click
@@ -46,6 +56,10 @@ function makeSet(overrides: Partial<SetDetail> = {}): SetDetail {
     bpm_ceiling: null,
     key_strictness: 0,
     tidal_playlist_id: null,
+    spotify_playlist_id: null,
+    apple_music_playlist_id: null,
+    apple_music_export_uncertain: false,
+    apple_music_export_recovery_playlist_id: null,
     exported_at: null,
     created_at: '2026-06-10T00:00:00Z',
     updated_at: '2026-06-10T00:00:00Z',
@@ -61,6 +75,8 @@ function makePreflightClean(target: ExportPreflight['target'] = 'rekordbox'): Ex
     resolved_count: 10,
     unresolved: [],
     tidal_connected: null,
+    spotify_connected: null,
+    apple_music_connected: null,
   };
 }
 
@@ -69,7 +85,11 @@ function makePreflightWithUnresolved(
 ): ExportPreflight {
   // Backend sets reason per target: tidal preflight → no_tidal_match,
   // file targets (rekordbox/m3u/txt) → missing_metadata.
-  const reason = target === 'tidal' ? ('no_tidal_match' as const) : ('missing_metadata' as const);
+  const reason = target === 'tidal'
+    ? ('no_tidal_match' as const)
+    : target === 'spotify'
+      ? ('no_spotify_match' as const)
+      : ('missing_metadata' as const);
   return {
     target,
     source: 'timeline',
@@ -92,12 +112,23 @@ function makePreflightWithUnresolved(
       },
     ],
     tidal_connected: null,
+    spotify_connected: null,
+    apple_music_connected: null,
   };
 }
 
 const TIDAL_RESULT: ExportTidalResult = {
   playlist_id: 'pl-1',
   playlist_url: 'https://tidal.com/playlist/pl-1',
+  added: 10,
+  skipped: 0,
+  exported_at: '2026-06-10T12:00:00Z',
+  status: 'exported',
+};
+
+const SPOTIFY_RESULT: ExportSpotifyResult = {
+  playlist_id: 'spotify-pl-1',
+  playlist_url: 'https://open.spotify.com/playlist/spotify-pl-1',
   added: 10,
   skipped: 0,
   exported_at: '2026-06-10T12:00:00Z',
@@ -115,12 +146,16 @@ beforeEach(() => {
   createObjectURLSpy.mockReturnValue('blob:mock-url');
 });
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 // ============================================================
-// 1. Platform picker — all 8 rows, 3 disabled with "Coming soon"
+// 1. Platform picker — Apple Music export is available
 // ============================================================
 
 describe('ExportModal — platform picker', () => {
-  it('renders all 8 platform rows with 3 disabled and showing "Coming soon"', () => {
+  it('renders all 8 platform rows with only Serato showing "Coming soon"', () => {
     render(<ExportModal {...baseProps} />);
 
     // Available platforms (Engine DJ + Lexicon both ship via Rekordbox XML)
@@ -135,9 +170,9 @@ describe('ExportModal — platform picker', () => {
     expect(screen.getByText('Spotify')).toBeTruthy();
     expect(screen.getByText('Apple Music')).toBeTruthy();
 
-    // Exactly 3 "Coming soon" badges
+    // Only Serato remains unavailable.
     const comingSoonBadges = screen.getAllByText('Coming soon');
-    expect(comingSoonBadges).toHaveLength(3);
+    expect(comingSoonBadges).toHaveLength(1);
   });
 
   it('Engine DJ and Lexicon rows are enabled (not "Coming soon")', () => {
@@ -148,16 +183,238 @@ describe('ExportModal — platform picker', () => {
     expect((lexiconBtn as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('unavailable rows are disabled and clicking them does not call exportPreflight', () => {
+  it('explains when Apple Music is unavailable because deployment credentials are missing', async () => {
+    mockApi.exportPreflight.mockRejectedValue(
+      new ApiError('Apple Music is not configured', 503),
+    );
+
     render(<ExportModal {...baseProps} />);
+    fireEvent.click(screen.getByText('Apple Music'));
 
-    // Find the Spotify button (unavailable row)
-    const spotifyBtn = screen.getByRole('button', { name: /spotify/i });
-    expect((spotifyBtn as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      await screen.findByText(
+        "Apple Music export is unavailable because this deployment is not configured.",
+      ),
+    ).toBeTruthy();
+  });
 
-    // Clicking a disabled button must not trigger the preflight call
-    fireEvent.click(spotifyBtn);
-    expect(mockApi.exportPreflight).not.toHaveBeenCalled();
+  it('connects Apple Music, preflights again, then exports the set', async () => {
+    mockApi.exportPreflight
+      .mockResolvedValueOnce({ ...makePreflightClean('apple_music'), apple_music_connected: false })
+      .mockResolvedValueOnce({ ...makePreflightClean('apple_music'), apple_music_connected: true });
+    mockApi.getAppleMusicDeveloperToken.mockResolvedValue({
+      developer_token: 'developer-token',
+      expires_at: 100,
+    });
+    mockApi.linkAppleMusicAccount.mockResolvedValue({
+      configured: true,
+      linked: true,
+      requires_reauthorization: false,
+      storefront: 'gb',
+    });
+    mockApi.exportSetToAppleMusic.mockResolvedValue({
+      playlist_id: 'p.playlist123',
+      playlist_url: 'https://music.apple.com/gb/library/playlist/p.playlist123',
+      added: 10,
+      skipped: 0,
+      exported_at: '2026-06-10T12:00:00Z',
+      status: 'exported',
+    });
+    const authorize = vi.fn().mockResolvedValue('music-user-token-secret');
+    Object.defineProperty(window, 'MusicKit', {
+      configurable: true,
+      value: {
+        configure: vi.fn().mockResolvedValue(undefined),
+        getInstance: () => ({ authorize }),
+      },
+    });
+    const onSetUpdated = vi.fn();
+
+    render(<ExportModal {...baseProps} onSetUpdated={onSetUpdated} />);
+    fireEvent.click(screen.getByText('Apple Music'));
+    await waitFor(() => expect(screen.getByRole('button', { name: /connect apple music/i })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /connect apple music/i }));
+
+    await waitFor(() => expect(mockApi.linkAppleMusicAccount).toHaveBeenCalledWith('music-user-token-secret'));
+    await waitFor(() => expect(screen.getByRole('button', { name: /export to apple music/i })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /export to apple music/i }));
+
+    await waitFor(() => {
+      expect(mockApi.exportSetToAppleMusic).toHaveBeenCalledWith(42, false);
+      expect(screen.getByRole('link', { name: /open in apple music/i })).toBeTruthy();
+    });
+    expect(onSetUpdated).toHaveBeenCalledWith({
+      status: 'exported',
+      apple_music_playlist_id: 'p.playlist123',
+      exported_at: '2026-06-10T12:00:00Z',
+    });
+  });
+
+  it.each([
+    ['known playlist ID', 'p.playlist123'],
+    ['unknown playlist ID', null],
+  ])('prevents retrying an unconfirmed Apple Music export with %s', async (_label, playlistId) => {
+    mockApi.exportPreflight.mockResolvedValue(makePreflightClean('apple_music'));
+    const onSetUpdated = vi.fn();
+    const message = 'Apple Music export could not be confirmed. Do not retry; check your library.';
+    const actualApi = await vi.importActual<typeof import('@/lib/api')>('@/lib/api');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      detail: { code: 'apple_music_write_uncertain', message, playlist_id: playlistId },
+    }), { status: 502 })));
+    mockApi.exportSetToAppleMusic.mockImplementation((setId, skipUnresolved) =>
+      actualApi.api.exportSetToAppleMusic(setId, skipUnresolved),
+    );
+
+    render(<ExportModal {...baseProps} onSetUpdated={onSetUpdated} />);
+    fireEvent.click(screen.getByText('Apple Music'));
+    fireEvent.click(await screen.findByRole('button', { name: /export to apple music/i }));
+
+    expect(await screen.findByText(message)).toBeTruthy();
+    if (playlistId) {
+      expect(screen.getByText(/p\.playlist123/)).toBeTruthy();
+    } else {
+      expect(screen.queryByText(/p\.playlist123/)).toBeNull();
+    }
+    expect(screen.queryByRole('button', { name: /export to apple music/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /back/i })).toBeTruthy();
+    expect(mockApi.exportSetToAppleMusic).toHaveBeenCalledTimes(1);
+    expect(onSetUpdated).toHaveBeenCalledWith({
+      apple_music_export_uncertain: true,
+      apple_music_export_recovery_playlist_id: playlistId,
+    });
+  });
+
+  it('recovers a saved ambiguous export when the DJ finds its playlist', async () => {
+    mockApi.reconcileAppleMusicExport.mockResolvedValue({ status: 'exported' });
+    const onSetUpdated = vi.fn();
+
+    render(
+      <ExportModal
+        {...baseProps}
+        set={makeSet({
+          apple_music_export_uncertain: true,
+          apple_music_export_recovery_playlist_id: 'p.savedPlaylist',
+        })}
+        onSetUpdated={onSetUpdated}
+      />,
+    );
+
+    expect(await screen.findByText(/check your apple music library/i)).toBeTruthy();
+    expect(screen.getByRole('textbox', { name: /playlist id/i })).toHaveProperty(
+      'value',
+      'p.savedPlaylist',
+    );
+    expect(screen.queryByText('Choose a platform or format')).toBeNull();
+    expect(screen.queryByRole('button', { name: /export to apple music/i })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /i found the playlist/i }));
+
+    await waitFor(() => {
+      expect(mockApi.reconcileAppleMusicExport).toHaveBeenCalledWith(42, {
+        action: 'playlist_found',
+        playlist_id: 'p.savedPlaylist',
+      });
+      expect(onSetUpdated).toHaveBeenCalledWith({
+        status: 'exported',
+        apple_music_playlist_id: 'p.savedPlaylist',
+        apple_music_export_uncertain: false,
+        apple_music_export_recovery_playlist_id: null,
+      });
+      expect(screen.getByText(/playlist confirmed/i)).toBeTruthy();
+    });
+    expect(mockApi.exportSetToAppleMusic).not.toHaveBeenCalled();
+  });
+
+  it('requires a second confirmation before clearing an ambiguous export with no playlist found', async () => {
+    mockApi.reconcileAppleMusicExport.mockResolvedValue({ status: 'ready_to_retry' });
+    const onSetUpdated = vi.fn();
+
+    render(
+      <ExportModal
+        {...baseProps}
+        set={makeSet({ apple_music_export_uncertain: true })}
+        onSetUpdated={onSetUpdated}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /i couldn't find the playlist/i }));
+    expect(screen.getByText(/confirm that you checked your library/i)).toBeTruthy();
+    expect(mockApi.reconcileAppleMusicExport).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /yes, no playlist was found/i }));
+
+    await waitFor(() => {
+      expect(mockApi.reconcileAppleMusicExport).toHaveBeenCalledWith(42, {
+        action: 'playlist_absent',
+      });
+      expect(onSetUpdated).toHaveBeenCalledWith({
+        apple_music_export_uncertain: false,
+        apple_music_export_recovery_playlist_id: null,
+      });
+      expect(screen.getByText(/you can start a new export when you.re ready/i)).toBeTruthy();
+    });
+    expect(mockApi.exportSetToAppleMusic).not.toHaveBeenCalled();
+  });
+
+  it('keeps an ordinary Apple Music provider failure retryable', async () => {
+    mockApi.exportPreflight.mockResolvedValue(makePreflightClean('apple_music'));
+    mockApi.exportSetToAppleMusic.mockRejectedValue(new ApiError('Provider unavailable', 502));
+
+    render(<ExportModal {...baseProps} />);
+    fireEvent.click(screen.getByText('Apple Music'));
+    fireEvent.click(await screen.findByRole('button', { name: /export to apple music/i }));
+
+    expect(await screen.findByRole('button', { name: /export to apple music/i })).toBeTruthy();
+    expect(screen.getByText('Provider unavailable')).toBeTruthy();
+  });
+
+  it('disables Apple Music connect while MusicKit authorization is pending', async () => {
+    mockApi.exportPreflight
+      .mockResolvedValueOnce({
+        ...makePreflightClean('apple_music'),
+        apple_music_connected: false,
+      })
+      .mockResolvedValueOnce({
+        ...makePreflightClean('apple_music'),
+        apple_music_connected: true,
+      });
+    mockApi.getAppleMusicDeveloperToken.mockResolvedValue({
+      developer_token: 'developer-token',
+      expires_at: 100,
+    });
+    let resolveAuthorization: (token: string) => void = () => {};
+    const authorization = new Promise<string>(resolve => {
+      resolveAuthorization = resolve;
+    });
+    const authorize = vi.fn().mockReturnValue(authorization);
+    Object.defineProperty(window, 'MusicKit', {
+      configurable: true,
+      value: {
+        configure: vi.fn().mockResolvedValue(undefined),
+        getInstance: () => ({ authorize }),
+      },
+    });
+    mockApi.linkAppleMusicAccount.mockResolvedValue({
+      configured: true,
+      linked: true,
+      requires_reauthorization: false,
+      storefront: 'gb',
+    });
+
+    render(<ExportModal {...baseProps} />);
+    fireEvent.click(screen.getByText('Apple Music'));
+    await waitFor(() => expect(screen.getByRole('button', { name: /connect apple music/i })).toBeTruthy());
+    const connectButton = screen.getByRole('button', { name: /connect apple music/i });
+    fireEvent.click(connectButton);
+
+    const pendingButton = await screen.findByRole('button', { name: /connecting apple music/i });
+    expect((pendingButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(pendingButton);
+    expect(authorize).toHaveBeenCalledTimes(1);
+
+    resolveAuthorization('music-user-token-secret');
+    await waitFor(() => expect(mockApi.linkAppleMusicAccount).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole('button', { name: /export to apple music/i })).toBeTruthy());
   });
 });
 
@@ -344,6 +601,53 @@ describe('ExportModal — Tidal export', () => {
     expect(onSetUpdated).toHaveBeenCalledWith({
       status: 'exported',
       tidal_playlist_id: 'pl-1',
+      exported_at: '2026-06-10T12:00:00Z',
+    });
+  });
+});
+
+describe('ExportModal — Spotify export', () => {
+  it('shows a connect action and blocks export when Spotify is not linked', async () => {
+    mockApi.exportPreflight.mockResolvedValue({
+      ...makePreflightClean('spotify'),
+      spotify_connected: false,
+    });
+    mockApi.startSpotifyAuthorization.mockResolvedValue({
+      authorization_url: 'https://accounts.spotify.com/authorize?state=state',
+    });
+
+    render(<ExportModal {...baseProps} />);
+    fireEvent.click(screen.getByText('Spotify'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /connect spotify/i })).toBeTruthy();
+    });
+    expect(screen.queryByRole('button', { name: /export to spotify/i })).toBeNull();
+  });
+
+  it('exports after connected preflight and shows Spotify playlist result', async () => {
+    mockApi.exportPreflight.mockResolvedValue({
+      ...makePreflightClean('spotify'),
+      spotify_connected: true,
+    });
+    mockApi.exportSetToSpotify.mockResolvedValue(SPOTIFY_RESULT);
+    const onSetUpdated = vi.fn();
+
+    render(<ExportModal {...baseProps} onSetUpdated={onSetUpdated} />);
+    fireEvent.click(screen.getByText('Spotify'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /export to spotify/i })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /export to spotify/i }));
+
+    await waitFor(() => {
+      expect(mockApi.exportSetToSpotify).toHaveBeenCalledWith(42, false);
+      expect(screen.getByRole('link', { name: /open in spotify/i })).toBeTruthy();
+    });
+    expect(onSetUpdated).toHaveBeenCalledWith({
+      status: 'exported',
+      spotify_playlist_id: 'spotify-pl-1',
       exported_at: '2026-06-10T12:00:00Z',
     });
   });

@@ -42,6 +42,7 @@ bridge-app/index.html
 Thumbs.db
 
 # Testing
+.vitest/
 .coverage
 coverage/
 coverage-report.html
@@ -82,3 +83,14 @@ notes/
 .claude/
 .superpowers/
 .worktrees/
+
+# agentkit: .agent/ is working state; these two files are the declaration
+.agent/*
+!.agent/config.env
+!.agent/board.json
+
+# PostgreSQL upgrade dumps (deploy/scripts/upgrade-postgres-volume.sh)
+deploy/backups/
+
+# Production host: last commit fully deployed by deploy/ci-deploy.sh
+deploy/.ci-last-deployed

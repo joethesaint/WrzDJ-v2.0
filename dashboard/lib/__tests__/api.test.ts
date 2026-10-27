@@ -1,17 +1,27 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { api, ApiError, withHumanRetry, HumanVerificationRequiredError } from '../api';
+import {
+  api,
+  ApiError,
+  withHumanRetry,
+  HumanVerificationRequiredError,
+  CSRF_HEADER_NAME,
+  CSRF_HEADER_VALUE,
+} from '../api';
 
-// Mock fetch globally
+// Each test owns its fetch stub and restores the original during cleanup.
 const mockFetch = vi.fn();
-global.fetch = mockFetch;
 
 describe('ApiClient', () => {
   beforeEach(() => {
+    vi.stubGlobal('fetch', mockFetch);
     mockFetch.mockReset();
     api.setToken(null);
+    api.setUnauthorizedHandler(null);
   });
 
   afterEach(() => {
+    api.setUnauthorizedHandler(null);
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -88,6 +98,27 @@ describe('ApiClient', () => {
 
       expect(critique.overall_grade).toBe('B+');
       expect(mockFetch.mock.calls[0][0]).toContain('/api/setbuilder/sets/42/critique');
+    });
+
+    it('records an Apple Music playlist found during export recovery', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: 'exported' }),
+      });
+
+      const result = await api.reconcileAppleMusicExport(42, {
+        action: 'playlist_found',
+        playlist_id: 'p.savedPlaylist',
+      });
+
+      expect(result.status).toBe('exported');
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toContain('/api/setbuilder/sets/42/export/apple-music/recovery');
+      expect(options.method).toBe('POST');
+      expect(JSON.parse(options.body)).toEqual({
+        action: 'playlist_found',
+        playlist_id: 'p.savedPlaylist',
+      });
     });
 
     it('loads agent history and sends chat turns without client history', async () => {
@@ -425,9 +456,11 @@ describe('ApiClient', () => {
       expect(result.total).toBe(1);
 
       const [url] = mockFetch.mock.calls[0];
-      expect(url).toContain('/api/public/e/ABC123/history');
-      expect(url).toContain('limit=10');
-      expect(url).toContain('offset=0');
+      // Regression for 43bd5021 (#800): limit=10 also matches limit=100.
+      const requestUrl = new URL(url, 'http://test.local');
+      expect(requestUrl.pathname).toMatch(/\/api\/public\/e\/ABC123\/history$/);
+      expect(requestUrl.searchParams.get('limit')).toBe('100');
+      expect(requestUrl.searchParams.get('offset')).toBe('0');
     });
 
     it('fetches play history with custom limit and offset', async () => {
@@ -439,8 +472,9 @@ describe('ApiClient', () => {
       await api.getPlayHistory('ABC123', 5, 10);
 
       const [url] = mockFetch.mock.calls[0];
-      expect(url).toContain('limit=5');
-      expect(url).toContain('offset=10');
+      const requestUrl = new URL(url, 'http://test.local');
+      expect(requestUrl.searchParams.get('limit')).toBe('5');
+      expect(requestUrl.searchParams.get('offset')).toBe('10');
     });
 
     it('returns items with matched_request_id when request was fulfilled', async () => {
@@ -505,6 +539,7 @@ describe('ApiClient', () => {
         blob: async () => mockBlob,
         headers: new Headers({
           'Content-Disposition': 'attachment; filename="ABC123_play_history_20260205.csv"',
+          'X-Export-Truncated': 'true',
         }),
       });
 
@@ -520,7 +555,8 @@ describe('ApiClient', () => {
       };
       const createElementSpy = vi.spyOn(document, 'createElement').mockReturnValue(mockAnchor as unknown as HTMLElement);
 
-      await api.exportPlayHistoryCsv('ABC123');
+      const truncated = await api.exportPlayHistoryCsv('ABC123');
+      expect(truncated).toBe(true);
 
       // Correct endpoint was fetched
       const [url] = mockFetch.mock.calls[0];
@@ -652,6 +688,75 @@ describe('ApiClient', () => {
 
       const [, options] = mockFetch.mock.calls[0];
       expect(options.method).toBe('POST');
+    });
+
+    it('fetches admin guests with filter and search', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ items: [{ id: 7, nickname: 'Alice' }], total: 1, page: 1, limit: 20 }),
+      });
+
+      const result = await api.getAdminGuests(2, 50, 'shared', 'ali');
+      expect(result.items).toHaveLength(1);
+
+      const [url] = mockFetch.mock.calls[0];
+      expect(url).toContain('/api/admin/guests?');
+      expect(url).toContain('page=2');
+      expect(url).toContain('limit=50');
+      expect(url).toContain('filter=shared');
+      expect(url).toContain('q=ali');
+    });
+
+    it('omits q from the admin guests URL when not searching', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ items: [], total: 0, page: 1, limit: 20 }),
+      });
+
+      await api.getAdminGuests();
+
+      const [url] = mockFetch.mock.calls[0];
+      expect(url).toContain('filter=all');
+      expect(url).not.toContain('q=');
+    });
+
+    it('revokes an admin guest email with PATCH', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 7, email_verified: false }),
+      });
+
+      const guest = await api.updateAdminGuest(7, { revoke_email: true });
+      expect(guest.email_verified).toBe(false);
+
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toContain('/api/admin/guests/7');
+      expect(options.method).toBe('PATCH');
+      expect(JSON.parse(options.body)).toEqual({ revoke_email: true });
+    });
+
+    it('updates an admin guest per-event nickname with PATCH', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 7, nickname: 'Zed' }),
+      });
+
+      const guest = await api.updateAdminGuestProfile(7, 3, { nickname: 'Zed' });
+      expect(guest.nickname).toBe('Zed');
+
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toContain('/api/admin/guests/7/events/3');
+      expect(options.method).toBe('PATCH');
+    });
+
+    it('deletes an admin guest', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 204, json: async () => null });
+
+      await api.deleteAdminGuest(7);
+
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toContain('/api/admin/guests/7');
+      expect(options.method).toBe('DELETE');
     });
 
     it('updates admin settings', async () => {
@@ -1283,6 +1388,7 @@ describe('ApiClient', () => {
         blob: async () => mockBlob,
         headers: new Headers({
           'Content-Disposition': 'attachment; filename="ABC123.csv"',
+          'X-Export-Truncated': 'false',
         }),
       });
 
@@ -1294,7 +1400,8 @@ describe('ApiClient', () => {
         click: vi.fn(),
       } as unknown as HTMLElement);
 
-      await api.exportEventCsv('ABC123');
+      const truncated = await api.exportEventCsv('ABC123');
+      expect(truncated).toBe(false);
 
       const [url] = mockFetch.mock.calls[0];
       expect(url).toContain('/api/events/ABC123/export/csv');
@@ -1309,6 +1416,27 @@ describe('ApiClient', () => {
       });
 
       await expect(api.exportEventCsv('ABC123')).rejects.toThrow('Forbidden');
+    });
+
+    it('returns unknown when the truncation header is missing', async () => {
+      api.setToken('test-token');
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        blob: async () => new Blob(['csv,content'], { type: 'text/csv' }),
+        headers: new Headers({
+          'Content-Disposition': 'attachment; filename="ABC123.csv"',
+        }),
+      });
+
+      vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test');
+      vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+      vi.spyOn(document, 'createElement').mockReturnValue({
+        href: '',
+        download: '',
+        click: vi.fn(),
+      } as unknown as HTMLElement);
+
+      await expect(api.exportEventCsv('ABC123')).resolves.toBeNull();
     });
   });
 
@@ -2908,6 +3036,67 @@ describe('ApiClient', () => {
         claimed: false,
       });
     });
+
+    // NicknameGate always passes reverify; the 409 must survive withHumanRetry
+    // so a taken name opens the collision screen instead of "Request failed".
+    it('throws NicknameConflictError on 409 when called with reverify', async () => {
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ detail: { code: 'nickname_taken', claimed: true } }),
+          { status: 409, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+      const reverify = vi.fn();
+      await expect(
+        api.setCollectProfile('EVT01', { nickname: 'Alex' }, reverify),
+      ).rejects.toMatchObject({ name: 'NicknameConflictError', claimed: true });
+      expect(reverify).not.toHaveBeenCalled();
+    });
+  });
+
+  // Port of #852 (#851): FastAPI returns request-validation failures (422) as a
+  // list of Pydantic items, which used to collapse to "Request failed".
+  describe('422 validation messages', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    const reject422 = (detail: unknown) =>
+      vi.spyOn(global, 'fetch').mockResolvedValueOnce(
+        new Response(JSON.stringify({ detail }), {
+          status: 422,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+
+    it('surfaces a custom validator message without its "Value error, " prefix', async () => {
+      reject422([
+        {
+          type: 'value_error',
+          loc: ['body', 'nickname'],
+          msg: 'Value error, Please choose a different name',
+          input: 'Rude',
+        },
+      ]);
+      await expect(
+        api.setCollectProfile('EVT01', { nickname: 'Rude' }, vi.fn()),
+      ).rejects.toMatchObject({ status: 422, message: 'Please choose a different name' });
+    });
+
+    it('names the field for a built-in Pydantic message', async () => {
+      reject422([
+        { type: 'string_too_short', loc: ['body', 'nickname'], msg: 'String should have at least 2 characters' },
+        { type: 'missing', loc: ['body', 'email'], msg: 'Field required' },
+      ]);
+      await expect(
+        api.setCollectProfile('EVT01', { nickname: 'x' }, vi.fn()),
+      ).rejects.toMatchObject({ message: 'nickname: String should have at least 2 characters' });
+    });
+
+    it('falls back when the list carries no usable message', async () => {
+      reject422([{ loc: ['body'] }]);
+      await expect(
+        api.setCollectProfile('EVT01', { nickname: 'x' }, vi.fn()),
+      ).rejects.toMatchObject({ message: 'Request failed' });
+    });
   });
 
   describe('streamConnectorTest', () => {
@@ -3099,6 +3288,93 @@ describe('ApiClient', () => {
 
       await expect(withHumanRetry(doFetch, reverify)).rejects.toThrow('human_verification_failed');
       expect(doFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('preserves a structured provider error code and detail for recovery handling', async () => {
+      const detail = {
+        code: 'apple_music_write_uncertain',
+        message: 'Do not retry; check your library.',
+        playlist_id: 'p.playlist123',
+      };
+      const doFetch = vi.fn(async () => new Response(JSON.stringify({ detail }), { status: 502 }));
+
+      const error = await withHumanRetry(doFetch, vi.fn()).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({
+        message: detail.message,
+        code: detail.code,
+        detail,
+      });
+    });
+  });
+
+  describe('Apple Music set export', () => {
+    it('preserves the uncertain write code, message, and known playlist ID from HTTP errors', async () => {
+      api.setToken('test-token');
+      const detail = {
+        code: 'apple_music_write_uncertain',
+        message: 'Do not retry; check your library.',
+        playlist_id: 'p.playlist123',
+      };
+      mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ detail }), { status: 502 }));
+
+      const error = await api.exportSetToAppleMusic(42, false).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({
+        status: 502,
+        message: detail.message,
+        code: detail.code,
+        detail,
+      });
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/setbuilder/sets/42/export/apple-music'),
+        expect.objectContaining({ method: 'POST' }),
+      );
+    });
+  });
+
+  describe('cookie session (#754)', () => {
+    it('login sends credentials so the HttpOnly session cookie is stored', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ access_token: 'ignored', token_type: 'bearer' }),
+      });
+      await api.login('dj', 'pw');
+      const [, options] = mockFetch.mock.calls[0];
+      expect(options.credentials).toBe('include');
+      // Without this header the API returns the token but issues no cookie (login CSRF).
+      expect(options.headers[CSRF_HEADER_NAME]).toBe(CSRF_HEADER_VALUE);
+    });
+
+    it('authenticated requests carry the CSRF header and credentials', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ id: 1, username: 'dj', role: 'dj', help_pages_seen: [] }),
+      });
+      await api.getMe();
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toContain('/api/auth/me');
+      expect(options.credentials).toBe('include');
+      expect(options.headers.get(CSRF_HEADER_NAME)).toBe(CSRF_HEADER_VALUE);
+      expect(options.headers.get('Authorization')).toBeNull();
+    });
+
+    it('endSession DELETEs /api/auth/session with credentials', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: 'ok', message: 'Session ended' }),
+      });
+      await api.endSession();
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toContain('/api/auth/session');
+      expect(options.method).toBe('DELETE');
+      expect(options.credentials).toBe('include');
+      expect(options.headers.get(CSRF_HEADER_NAME)).toBe(CSRF_HEADER_VALUE);
     });
   });
 });

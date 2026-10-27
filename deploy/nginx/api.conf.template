@@ -26,7 +26,9 @@ server {
 
     access_log /var/log/nginx/${API_DOMAIN}.access.log json_analytics;
 
-    # SSL certificates (managed by certbot)
+    # SSL certificates (managed by certbot). On a fresh host,
+    # setup-nginx.sh installs an HTTP bootstrap first so certbot --nginx
+    # can create all four required lineages before this block is activated.
     # ECDSA certificate (primary, best performance)
     ssl_certificate /etc/letsencrypt/live/${API_DOMAIN}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${API_DOMAIN}/privkey.pem;
@@ -83,6 +85,16 @@ server {
     # server level, so we must repeat all headers here.
     location ~ ^/api/public/events/.+/stream$ {
         # No limit_req here: long-lived event streams must never be throttled.
+        # They are capped by concurrency instead (HTTP/2 streams count
+        # individually). Every guest page, kiosk display and dashboard tab holds
+        # one stream, and a whole venue, DJ included, can sit behind a single
+        # NAT address: past the cap a new tab gets 429 and the dashboard retries
+        # with backoff capped at 30s, so size SSE_CONN_LIMIT (setup-nginx.sh)
+        # for the largest room on venue wifi. The cap only bounds what one address can pin open
+        # on the single API process; it is not a per-event capacity.
+        limit_conn wrzdj_sse ${SSE_CONN_LIMIT};
+        limit_conn_status 429;
+        limit_conn_log_level warn;
         proxy_pass http://127.0.0.1:${PORT_API};
         proxy_http_version 1.1;
         proxy_set_header Host $host;

@@ -234,47 +234,36 @@ def test_pairing_routes_require_active_dj(client, auth_headers, pending_headers)
     payload = {"from_track_id": "tidal:a", "into_track_id": "tidal:b"}
 
     assert client.get(f"/api/setbuilder/sets/{set_obj['id']}/pairings").status_code == 401
-    assert (
-        client.post(f"/api/setbuilder/sets/{set_obj['id']}/pairings", json=payload).status_code
-        == 401
+    anon_create = client.post(f"/api/setbuilder/sets/{set_obj['id']}/pairings", json=payload)
+    assert anon_create.status_code == 401
+    pending_list = client.get(
+        f"/api/setbuilder/sets/{set_obj['id']}/pairings", headers=pending_headers
     )
-    assert (
-        client.get(
-            f"/api/setbuilder/sets/{set_obj['id']}/pairings", headers=pending_headers
-        ).status_code
-        == 403
+    assert pending_list.status_code == 403
+    pending_create = client.post(
+        f"/api/setbuilder/sets/{set_obj['id']}/pairings",
+        json=payload,
+        headers=pending_headers,
     )
-    assert (
-        client.post(
-            f"/api/setbuilder/sets/{set_obj['id']}/pairings",
-            json=payload,
-            headers=pending_headers,
-        ).status_code
-        == 403
+    assert pending_create.status_code == 403
+    anon_patch = client.patch(
+        f"/api/setbuilder/sets/{set_obj['id']}/pairings/1",
+        json={"note": "x"},
     )
-    assert (
-        client.patch(
-            f"/api/setbuilder/sets/{set_obj['id']}/pairings/1",
-            json={"note": "x"},
-        ).status_code
-        == 401
+    assert anon_patch.status_code == 401
+    anon_delete = client.delete(f"/api/setbuilder/sets/{set_obj['id']}/pairings/1")
+    assert anon_delete.status_code == 401
+    pending_patch = client.patch(
+        f"/api/setbuilder/sets/{set_obj['id']}/pairings/1",
+        json={"note": "x"},
+        headers=pending_headers,
     )
-    assert client.delete(f"/api/setbuilder/sets/{set_obj['id']}/pairings/1").status_code == 401
-    assert (
-        client.patch(
-            f"/api/setbuilder/sets/{set_obj['id']}/pairings/1",
-            json={"note": "x"},
-            headers=pending_headers,
-        ).status_code
-        == 403
+    assert pending_patch.status_code == 403
+    pending_delete = client.delete(
+        f"/api/setbuilder/sets/{set_obj['id']}/pairings/1",
+        headers=pending_headers,
     )
-    assert (
-        client.delete(
-            f"/api/setbuilder/sets/{set_obj['id']}/pairings/1",
-            headers=pending_headers,
-        ).status_code
-        == 403
-    )
+    assert pending_delete.status_code == 403
 
 
 def test_delete_pairing_removes_timeline_marker(client, auth_headers, db):

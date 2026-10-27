@@ -451,6 +451,220 @@
         "title": "AdminEventOut",
         "type": "object"
       },
+      "AdminGuestEventOut": {
+        "description": "One event membership (a guest_profiles row) as the admin sees it.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "integer"
+          },
+          "joined_at": {
+            "format": "date-time",
+            "title": "Joined At",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "nickname": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nickname"
+          },
+          "submission_count": {
+            "default": 0,
+            "title": "Submission Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "event_id",
+          "joined_at",
+          "name",
+          "nickname",
+          "submission_count"
+        ],
+        "title": "AdminGuestEventOut",
+        "type": "object"
+      },
+      "AdminGuestOut": {
+        "properties": {
+          "browser": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Browser"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "email_masked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Masked"
+          },
+          "email_verified": {
+            "default": false,
+            "title": "Email Verified",
+            "type": "boolean"
+          },
+          "email_verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Verified At"
+          },
+          "event_count": {
+            "default": 0,
+            "title": "Event Count",
+            "type": "integer"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/AdminGuestEventOut"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "fingerprint_shared_with": {
+            "default": 0,
+            "title": "Fingerprint Shared With",
+            "type": "integer"
+          },
+          "fingerprint_short": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fingerprint Short"
+          },
+          "human_verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Human Verified At"
+          },
+          "human_verify_count": {
+            "default": 0,
+            "title": "Human Verify Count",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          },
+          "nickname": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nickname"
+          },
+          "request_count": {
+            "default": 0,
+            "title": "Request Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "browser",
+          "created_at",
+          "email_masked",
+          "email_verified",
+          "email_verified_at",
+          "event_count",
+          "events",
+          "fingerprint_shared_with",
+          "fingerprint_short",
+          "human_verified_at",
+          "human_verify_count",
+          "id",
+          "last_seen_at",
+          "nickname",
+          "request_count"
+        ],
+        "title": "AdminGuestOut",
+        "type": "object"
+      },
+      "AdminGuestProfileUpdate": {
+        "properties": {
+          "nickname": {
+            "anyOf": [
+              {
+                "maxLength": 30,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nickname"
+          }
+        },
+        "title": "AdminGuestProfileUpdate",
+        "type": "object"
+      },
+      "AdminGuestUpdate": {
+        "properties": {
+          "revoke_email": {
+            "default": false,
+            "title": "Revoke Email",
+            "type": "boolean"
+          }
+        },
+        "title": "AdminGuestUpdate",
+        "type": "object"
+      },
       "AdminPolicyOut": {
         "properties": {
           "llm_apikey_connectors_enabled": {
@@ -875,6 +1089,74 @@
           "tool_calls"
         ],
         "title": "AgentChatOut",
+        "type": "object"
+      },
+      "AppleMusicDeveloperTokenOut": {
+        "properties": {
+          "developer_token": {
+            "title": "Developer Token",
+            "type": "string"
+          },
+          "expires_at": {
+            "title": "Expires At",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "developer_token",
+          "expires_at"
+        ],
+        "title": "AppleMusicDeveloperTokenOut",
+        "type": "object"
+      },
+      "AppleMusicLinkIn": {
+        "properties": {
+          "music_user_token": {
+            "maxLength": 8192,
+            "minLength": 20,
+            "title": "Music User Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "music_user_token"
+        ],
+        "title": "AppleMusicLinkIn",
+        "type": "object"
+      },
+      "AppleMusicStatusOut": {
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "linked": {
+            "title": "Linked",
+            "type": "boolean"
+          },
+          "requires_reauthorization": {
+            "title": "Requires Reauthorization",
+            "type": "boolean"
+          },
+          "storefront": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Storefront"
+          }
+        },
+        "required": [
+          "configured",
+          "linked",
+          "requires_reauthorization",
+          "storefront"
+        ],
+        "title": "AppleMusicStatusOut",
         "type": "object"
       },
       "AppliedToolCallOut": {
@@ -1973,6 +2255,117 @@
           "confirm_new_password"
         ],
         "title": "ChangePasswordRequest",
+        "type": "object"
+      },
+      "CollaboratorAccepted": {
+        "properties": {
+          "role": {
+            "enum": [
+              "editor",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "set_id": {
+            "title": "Set Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "role",
+          "set_id"
+        ],
+        "title": "CollaboratorAccepted",
+        "type": "object"
+      },
+      "CollaboratorInviteCreate": {
+        "properties": {
+          "role": {
+            "enum": [
+              "editor",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "CollaboratorInviteCreate",
+        "type": "object"
+      },
+      "CollaboratorInviteCreated": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "editor",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expires_at",
+          "role",
+          "token"
+        ],
+        "title": "CollaboratorInviteCreated",
+        "type": "object"
+      },
+      "CollaboratorInviteOut": {
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "revoked": {
+            "title": "Revoked",
+            "type": "boolean"
+          },
+          "role": {
+            "enum": [
+              "editor",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accepted",
+          "created_at",
+          "expires_at",
+          "id",
+          "revoked",
+          "role"
+        ],
+        "title": "CollaboratorInviteOut",
         "type": "object"
       },
       "CollectEventPreview": {
@@ -4042,6 +4435,118 @@
         "title": "EventUpdate",
         "type": "object"
       },
+      "ExportAppleMusicIn": {
+        "description": "Apple Music export requires an explicit choice before skipping unresolved tracks.",
+        "properties": {
+          "skip_unresolved": {
+            "default": false,
+            "title": "Skip Unresolved",
+            "type": "boolean"
+          }
+        },
+        "title": "ExportAppleMusicIn",
+        "type": "object"
+      },
+      "ExportAppleMusicOut": {
+        "description": "A playlist confirmed by read-back from the Apple Music library.",
+        "properties": {
+          "added": {
+            "title": "Added",
+            "type": "integer"
+          },
+          "exported_at": {
+            "format": "date-time",
+            "title": "Exported At",
+            "type": "string"
+          },
+          "playlist_id": {
+            "title": "Playlist Id",
+            "type": "string"
+          },
+          "playlist_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playlist Url"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "locked",
+              "exported"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "added",
+          "exported_at",
+          "playlist_id",
+          "playlist_url",
+          "skipped",
+          "status"
+        ],
+        "title": "ExportAppleMusicOut",
+        "type": "object"
+      },
+      "ExportAppleMusicRecoveryIn": {
+        "description": "Require the DJ to explicitly reconcile an export Apple did not confirm.",
+        "properties": {
+          "action": {
+            "enum": [
+              "playlist_found",
+              "playlist_absent"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "playlist_id": {
+            "anyOf": [
+              {
+                "pattern": "^p\\.[A-Za-z0-9_-]{1,98}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playlist Id"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "ExportAppleMusicRecoveryIn",
+        "type": "object"
+      },
+      "ExportAppleMusicRecoveryOut": {
+        "description": "Result of the DJ's explicit Apple Music reconciliation.",
+        "properties": {
+          "status": {
+            "enum": [
+              "exported",
+              "ready_to_retry"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "ExportAppleMusicRecoveryOut",
+        "type": "object"
+      },
       "ExportFileIn": {
         "description": "Body for the file (Rekordbox XML / M3U / txt) export.",
         "properties": {
@@ -4074,6 +4579,8 @@
           "target": {
             "enum": [
               "tidal",
+              "spotify",
+              "apple_music",
               "rekordbox",
               "m3u",
               "txt",
@@ -4093,6 +4600,17 @@
       "ExportPreflightOut": {
         "description": "Resolution summary the DJ confirms before exporting.",
         "properties": {
+          "apple_music_connected": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apple Music Connected"
+          },
           "resolved_count": {
             "title": "Resolved Count",
             "type": "integer"
@@ -4105,9 +4623,22 @@
             "title": "Source",
             "type": "string"
           },
+          "spotify_connected": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spotify Connected"
+          },
           "target": {
             "enum": [
               "tidal",
+              "spotify",
+              "apple_music",
               "rekordbox",
               "m3u",
               "txt",
@@ -4141,14 +4672,73 @@
           }
         },
         "required": [
+          "apple_music_connected",
           "resolved_count",
           "source",
+          "spotify_connected",
           "target",
           "tidal_connected",
           "total",
           "unresolved"
         ],
         "title": "ExportPreflightOut",
+        "type": "object"
+      },
+      "ExportSpotifyIn": {
+        "description": "Body for Spotify export; skip_unresolved requires explicit DJ choice.",
+        "properties": {
+          "skip_unresolved": {
+            "default": false,
+            "title": "Skip Unresolved",
+            "type": "boolean"
+          }
+        },
+        "title": "ExportSpotifyIn",
+        "type": "object"
+      },
+      "ExportSpotifyOut": {
+        "description": "Successful Spotify playlist export.",
+        "properties": {
+          "added": {
+            "title": "Added",
+            "type": "integer"
+          },
+          "exported_at": {
+            "format": "date-time",
+            "title": "Exported At",
+            "type": "string"
+          },
+          "playlist_id": {
+            "title": "Playlist Id",
+            "type": "string"
+          },
+          "playlist_url": {
+            "title": "Playlist Url",
+            "type": "string"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "locked",
+              "exported"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "added",
+          "exported_at",
+          "playlist_id",
+          "playlist_url",
+          "skipped",
+          "status"
+        ],
+        "title": "ExportSpotifyOut",
         "type": "object"
       },
       "ExportTidalIn": {
@@ -8211,6 +8801,33 @@
       "SetDetail": {
         "description": "Full set record (Phase 0: no slot/curve expansion yet).",
         "properties": {
+          "apple_music_export_recovery_playlist_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apple Music Export Recovery Playlist Id"
+          },
+          "apple_music_export_uncertain": {
+            "default": false,
+            "title": "Apple Music Export Uncertain",
+            "type": "boolean"
+          },
+          "apple_music_playlist_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apple Music Playlist Id"
+          },
           "avg_transition_overlap_sec": {
             "title": "Avg Transition Overlap Sec",
             "type": "integer"
@@ -8296,6 +8913,17 @@
             "title": "Sharing Mode",
             "type": "string"
           },
+          "spotify_playlist_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spotify Playlist Id"
+          },
           "status": {
             "enum": [
               "draft",
@@ -8345,6 +8973,9 @@
           }
         },
         "required": [
+          "apple_music_export_recovery_playlist_id",
+          "apple_music_export_uncertain",
+          "apple_music_playlist_id",
           "avg_transition_overlap_sec",
           "bpm_ceiling",
           "bpm_floor",
@@ -8356,6 +8987,7 @@
           "name",
           "share_token",
           "sharing_mode",
+          "spotify_playlist_id",
           "status",
           "target_duration_sec",
           "tidal_playlist_id",
@@ -9664,6 +10296,49 @@
         "title": "SortDirection",
         "type": "string"
       },
+      "SpotifyAuthorizationOut": {
+        "properties": {
+          "authorization_url": {
+            "title": "Authorization Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "authorization_url"
+        ],
+        "title": "SpotifyAuthorizationOut",
+        "type": "object"
+      },
+      "SpotifyStatusOut": {
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "linked": {
+            "title": "Linked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "configured",
+          "expires_at",
+          "linked"
+        ],
+        "title": "SpotifyStatusOut",
+        "type": "object"
+      },
       "StatusMessageResponse": {
         "properties": {
           "message": {
@@ -10786,6 +11461,8 @@
           "reason": {
             "enum": [
               "no_tidal_match",
+              "no_spotify_match",
+              "no_apple_music_match",
               "missing_metadata"
             ],
             "title": "Reason",
@@ -11651,6 +12328,256 @@
           }
         ],
         "summary": "Admin Update Event",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/guests": {
+      "get": {
+        "operationId": "admin_list_guests_api_admin_guests_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "filter",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "title": "Filter",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 30,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Admin List Guests",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/guests/{guest_id}": {
+      "delete": {
+        "operationId": "admin_delete_guest_api_admin_guests__guest_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "guest_id",
+            "required": true,
+            "schema": {
+              "title": "Guest Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Admin Delete Guest",
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "operationId": "admin_update_guest_api_admin_guests__guest_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "guest_id",
+            "required": true,
+            "schema": {
+              "title": "Guest Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminGuestUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminGuestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Admin Update Guest",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/guests/{guest_id}/events/{event_id}": {
+      "patch": {
+        "operationId": "admin_update_guest_profile_api_admin_guests__guest_id__events__event_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "guest_id",
+            "required": true,
+            "schema": {
+              "title": "Guest Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminGuestProfileUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminGuestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Admin Update Guest Profile",
         "tags": [
           "admin"
         ]
@@ -12846,6 +13773,134 @@
         ]
       }
     },
+    "/api/apple-music/developer-token": {
+      "get": {
+        "operationId": "developer_token_api_apple_music_developer_token_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppleMusicDeveloperTokenOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Developer Token",
+        "tags": [
+          "apple-music"
+        ]
+      }
+    },
+    "/api/apple-music/disconnect": {
+      "post": {
+        "operationId": "disconnect_account_api_apple_music_disconnect_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Disconnect Account Api Apple Music Disconnect Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Disconnect Account",
+        "tags": [
+          "apple-music"
+        ]
+      }
+    },
+    "/api/apple-music/link": {
+      "post": {
+        "operationId": "link_account_api_apple_music_link_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppleMusicLinkIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppleMusicStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Link Account",
+        "tags": [
+          "apple-music"
+        ]
+      }
+    },
+    "/api/apple-music/status": {
+      "get": {
+        "operationId": "status_for_user_api_apple_music_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppleMusicStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Status For User",
+        "tags": [
+          "apple-music"
+        ]
+      }
+    },
     "/api/auth/email/confirm": {
       "get": {
         "operationId": "confirm_email_change_api_auth_email_confirm_get",
@@ -12937,6 +13992,7 @@
     },
     "/api/auth/login": {
       "post": {
+        "description": "Issue the DJ JWT.\n\nThe token is returned in the body for bearer clients (bridge-app). For the\ndashboard (#754) it is ALSO set as an HttpOnly session cookie, but only when\nthe request carries the CSRF header: a cross-site form POST cannot add that\nheader, so it cannot plant a session cookie for an attacker's account in a\nvictim's browser (login CSRF).",
         "operationId": "login_api_auth_login_post",
         "requestBody": {
           "content": {
@@ -13204,6 +14260,28 @@
           }
         },
         "summary": "Register",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/session": {
+      "delete": {
+        "description": "Drop the dashboard session cookie without revoking bearer tokens (#754).\n\nThis is the dashboard's logout: it ends only this browser's session, so a\nbridge-app signed in as the same DJ keeps working. Needs no authentication\nbecause clearing your own cookie is harmless.",
+        "operationId": "end_session_api_auth_session_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusMessageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "End Session",
         "tags": [
           "auth"
         ]
@@ -14754,11 +15832,25 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
-                "schema": {}
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "CSV download; the header reports whether rows were omitted.",
+            "headers": {
+              "X-Export-Truncated": {
+                "description": "Whether additional rows were omitted after the export limit.",
+                "schema": {
+                  "enum": [
+                    "true",
+                    "false"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
           },
           "422": {
             "content": {
@@ -14800,11 +15892,25 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
-                "schema": {}
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "CSV download; the header reports whether rows were omitted.",
+            "headers": {
+              "X-Export-Truncated": {
+                "description": "Whether additional rows were omitted after the export limit.",
+                "schema": {
+                  "enum": [
+                    "true",
+                    "false"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
           },
           "422": {
             "content": {
@@ -18187,6 +19293,54 @@
         ]
       }
     },
+    "/api/setbuilder/collaborator-invites/{token}/accept": {
+      "post": {
+        "description": "Accept an invite with the recipient's active DJ account.",
+        "operationId": "accept_collaborator_invite_api_setbuilder_collaborator_invites__token__accept_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaboratorAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Accept Collaborator Invite",
+        "tags": [
+          "setbuilder"
+        ]
+      }
+    },
     "/api/setbuilder/curve-templates": {
       "get": {
         "description": "Built-in templates plus the current DJ's saved templates.",
@@ -18898,6 +20052,164 @@
         ]
       }
     },
+    "/api/setbuilder/sets/{set_id}/collaborator-invites": {
+      "get": {
+        "description": "List invitation status for an owned set without exposing invite tokens.",
+        "operationId": "list_collaborator_invites_api_setbuilder_sets__set_id__collaborator_invites_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "set_id",
+            "required": true,
+            "schema": {
+              "title": "Set Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CollaboratorInviteOut"
+                  },
+                  "title": "Response List Collaborator Invites Api Setbuilder Sets  Set Id  Collaborator Invites Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Collaborator Invites",
+        "tags": [
+          "setbuilder"
+        ]
+      },
+      "post": {
+        "description": "Create a single-use editor or viewer invitation for an owned set.",
+        "operationId": "create_collaborator_invite_api_setbuilder_sets__set_id__collaborator_invites_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "set_id",
+            "required": true,
+            "schema": {
+              "title": "Set Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollaboratorInviteCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaboratorInviteCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Create Collaborator Invite",
+        "tags": [
+          "setbuilder"
+        ]
+      }
+    },
+    "/api/setbuilder/sets/{set_id}/collaborator-invites/{invite_id}": {
+      "delete": {
+        "description": "Revoke an unused invitation for an owned set.",
+        "operationId": "revoke_collaborator_invite_api_setbuilder_sets__set_id__collaborator_invites__invite_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "set_id",
+            "required": true,
+            "schema": {
+              "title": "Set Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "invite_id",
+            "required": true,
+            "schema": {
+              "title": "Invite Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Revoke Collaborator Invite",
+        "tags": [
+          "setbuilder"
+        ]
+      }
+    },
     "/api/setbuilder/sets/{set_id}/critique": {
       "post": {
         "description": "Run pass 2 auto-critique through the LLM gateway.",
@@ -19165,6 +20477,141 @@
         ]
       }
     },
+    "/api/setbuilder/sets/{set_id}/export/apple-music": {
+      "post": {
+        "description": "Create and verify one ordered Apple Music library playlist.",
+        "operationId": "export_set_apple_music_api_setbuilder_sets__set_id__export_apple_music_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "set_id",
+            "required": true,
+            "schema": {
+              "title": "Set Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportAppleMusicIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportAppleMusicOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "Apple Music account not connected, or no exportable tracks."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnresolvedTracksError"
+                }
+              }
+            },
+            "description": "Unresolved tracks require confirmation, or another export is in progress."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "description": "Apple Music export failed or its outcome is uncertain."
+          },
+          "503": {
+            "description": "Apple Music is not configured."
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Export Set Apple Music",
+        "tags": [
+          "setbuilder"
+        ]
+      }
+    },
+    "/api/setbuilder/sets/{set_id}/export/apple-music/recovery": {
+      "post": {
+        "description": "Let the DJ reconcile an ambiguous export after checking their Apple library.",
+        "operationId": "reconcile_apple_music_export_api_setbuilder_sets__set_id__export_apple_music_recovery_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "set_id",
+            "required": true,
+            "schema": {
+              "title": "Set Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportAppleMusicRecoveryIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportAppleMusicRecoveryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Reconcile Apple Music Export",
+        "tags": [
+          "setbuilder"
+        ]
+      }
+    },
     "/api/setbuilder/sets/{set_id}/export/file": {
       "post": {
         "description": "Download the setlist as Rekordbox XML, M3U8, or plaintext.",
@@ -19294,6 +20741,12 @@
               }
             },
             "description": "Validation Error"
+          },
+          "502": {
+            "description": "Apple Music catalog lookup failed."
+          },
+          "503": {
+            "description": "Apple Music is not configured."
           }
         },
         "security": [
@@ -19302,6 +20755,80 @@
           }
         ],
         "summary": "Export Preflight",
+        "tags": [
+          "setbuilder"
+        ]
+      }
+    },
+    "/api/setbuilder/sets/{set_id}/export/spotify": {
+      "post": {
+        "description": "Export the ordered setlist to a new private Spotify playlist.",
+        "operationId": "export_set_spotify_api_setbuilder_sets__set_id__export_spotify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "set_id",
+            "required": true,
+            "schema": {
+              "title": "Set Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportSpotifyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportSpotifyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "Spotify account not connected, or no exportable tracks."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnresolvedTracksError"
+                }
+              }
+            },
+            "description": "Unresolved tracks \u2014 retry with skip_unresolved=true to proceed."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "description": "Upstream Spotify export failed."
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Export Set Spotify",
         "tags": [
           "setbuilder"
         ]
@@ -21114,6 +22641,181 @@
         "summary": "Reset Taste Profile",
         "tags": [
           "setbuilder"
+        ]
+      }
+    },
+    "/api/spotify/auth/callback": {
+      "get": {
+        "operationId": "authorization_callback_api_spotify_auth_callback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "state",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 5,
+              "title": "State",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 2048,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "wrzdj_spotify_oauth_state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Wrzdj Spotify Oauth State"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Authorization Callback",
+        "tags": [
+          "spotify"
+        ]
+      }
+    },
+    "/api/spotify/auth/start": {
+      "post": {
+        "operationId": "start_authorization_api_spotify_auth_start_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpotifyAuthorizationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Start Authorization",
+        "tags": [
+          "spotify"
+        ]
+      }
+    },
+    "/api/spotify/disconnect": {
+      "post": {
+        "operationId": "disconnect_account_api_spotify_disconnect_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Disconnect Account Api Spotify Disconnect Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Disconnect Account",
+        "tags": [
+          "spotify"
+        ]
+      }
+    },
+    "/api/spotify/status": {
+      "get": {
+        "operationId": "status_for_user_api_spotify_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpotifyStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Status For User",
+        "tags": [
+          "spotify"
         ]
       }
     },

@@ -28,6 +28,30 @@ class SetTargetUpdate(BaseModel):
     avg_transition_overlap_sec: int = Field(..., ge=0, le=32)
 
 
+class CollaboratorInviteCreate(BaseModel):
+    role: Literal["editor", "viewer"]
+
+
+class CollaboratorInviteCreated(BaseModel):
+    token: str
+    role: Literal["editor", "viewer"]
+    expires_at: datetime
+
+
+class CollaboratorInviteOut(BaseModel):
+    id: int
+    role: Literal["editor", "viewer"]
+    created_at: datetime
+    expires_at: datetime
+    accepted: bool
+    revoked: bool
+
+
+class CollaboratorAccepted(BaseModel):
+    set_id: int
+    role: Literal["editor", "viewer"]
+
+
 class SetSummary(BaseModel):
     """Set list item (no children)."""
 
@@ -54,6 +78,10 @@ class SetDetail(SetSummary):
     bpm_ceiling: int | None
     key_strictness: float
     tidal_playlist_id: str | None
+    spotify_playlist_id: str | None = None
+    apple_music_playlist_id: str | None = None
+    apple_music_export_uncertain: bool = False
+    apple_music_export_recovery_playlist_id: str | None = None
     exported_at: datetime | None
 
 
@@ -942,7 +970,9 @@ class VibeEnrichmentResult(BaseModel):
 # Engine DJ and Lexicon have no proprietary import format — both ingest the
 # Rekordbox DJ_PLAYLISTS XML — so they are distinct format keys that render the
 # same XML (kept distinct, not aliased, so the UI lists them separately).
-ExportTarget = Literal["tidal", "rekordbox", "m3u", "txt", "enginedj", "lexicon"]
+ExportTarget = Literal[
+    "tidal", "spotify", "apple_music", "rekordbox", "m3u", "txt", "enginedj", "lexicon"
+]
 ExportFileFormat = Literal["rekordbox", "m3u", "txt", "enginedj", "lexicon"]
 
 
@@ -959,7 +989,9 @@ class UnresolvedTrackOut(BaseModel):
     title: str
     artist: str
     track_id: str | None
-    reason: Literal["no_tidal_match", "missing_metadata"]
+    reason: Literal[
+        "no_tidal_match", "no_spotify_match", "no_apple_music_match", "missing_metadata"
+    ]
 
 
 class ExportPreflightOut(BaseModel):
@@ -972,6 +1004,8 @@ class ExportPreflightOut(BaseModel):
     unresolved: list[UnresolvedTrackOut]
     # Only set for target="tidal"; None for file targets.
     tidal_connected: bool | None = None
+    spotify_connected: bool | None = None
+    apple_music_connected: bool | None = None
 
 
 class ExportTidalIn(BaseModel):
@@ -985,6 +1019,61 @@ class ExportTidalOut(BaseModel):
 
     playlist_id: str
     playlist_url: str
+    added: int
+    skipped: int
+    exported_at: datetime
+    status: Literal["draft", "locked", "exported"]
+
+
+class ExportSpotifyIn(BaseModel):
+    """Body for Spotify export; skip_unresolved requires explicit DJ choice."""
+
+    skip_unresolved: bool = False
+
+
+class ExportSpotifyOut(BaseModel):
+    """Successful Spotify playlist export."""
+
+    playlist_id: str
+    playlist_url: str
+    added: int
+    skipped: int
+    exported_at: datetime
+    status: Literal["draft", "locked", "exported"]
+
+
+class ExportAppleMusicIn(BaseModel):
+    """Apple Music export requires an explicit choice before skipping unresolved tracks."""
+
+    skip_unresolved: bool = False
+
+
+class ExportAppleMusicRecoveryIn(BaseModel):
+    """Require the DJ to explicitly reconcile an export Apple did not confirm."""
+
+    action: Literal["playlist_found", "playlist_absent"]
+    playlist_id: str | None = Field(default=None, pattern=r"^p\.[A-Za-z0-9_-]{1,98}$")
+
+    @model_validator(mode="after")
+    def validate_recovery_action(self) -> "ExportAppleMusicRecoveryIn":
+        if self.action == "playlist_found" and self.playlist_id is None:
+            raise ValueError("playlist_id is required when the playlist was found")
+        if self.action == "playlist_absent" and self.playlist_id is not None:
+            raise ValueError("playlist_id is only valid when the playlist was found")
+        return self
+
+
+class ExportAppleMusicRecoveryOut(BaseModel):
+    """Result of the DJ's explicit Apple Music reconciliation."""
+
+    status: Literal["exported", "ready_to_retry"]
+
+
+class ExportAppleMusicOut(BaseModel):
+    """A playlist confirmed by read-back from the Apple Music library."""
+
+    playlist_id: str
+    playlist_url: str | None
     added: int
     skipped: int
     exported_at: datetime

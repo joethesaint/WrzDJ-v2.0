@@ -20,7 +20,7 @@ from fastapi import (
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_active_user, get_db
+from app.api.deps import get_current_active_user, get_db, require_owned_event_id
 from app.core.rate_limit import limiter
 from app.models.set import Set
 from app.models.set_pool import SetPoolTrack
@@ -43,15 +43,25 @@ from app.schemas.setbuilder import (
     BuildSetRequest,
     BuildSetResponse,
     BuiltinTemplateOut,
+    CollaboratorAccepted,
+    CollaboratorInviteCreate,
+    CollaboratorInviteCreated,
+    CollaboratorInviteOut,
     CommunityVibeOut,
     CritiqueFlagOut,
     CurvePointModel,
     CurveTemplateCreate,
     CurveTemplateOut,
     CurveTemplatesResponse,
+    ExportAppleMusicIn,
+    ExportAppleMusicOut,
+    ExportAppleMusicRecoveryIn,
+    ExportAppleMusicRecoveryOut,
     ExportFileIn,
     ExportPreflightIn,
     ExportPreflightOut,
+    ExportSpotifyIn,
+    ExportSpotifyOut,
     ExportTidalIn,
     ExportTidalOut,
     LlmVibeOut,
@@ -106,15 +116,19 @@ from app.schemas.setbuilder import (
     VibeWindowsPut,
     VibeWindowsResponse,
 )
+from app.services import apple_music_accounts, apple_music_catalog, apple_music_tokens
 from app.services.bridge_integration import queue_command
 from app.services.llm.exceptions import NoLlmConfigured
 from app.services.now_playing import get_now_playing
 from app.services.setbuilder import (
     agent_history,
+    collaboration,
     curve,
     document_snapshot,
+    export_apple_music,
     export_common,
     export_files,
+    export_spotify,
     export_tidal,
     pairings,
     pass1_deterministic,
@@ -131,6 +145,7 @@ from app.services.setbuilder import (
     coverage as pool_coverage_service,
 )
 from app.services.setbuilder.playlist_url import InvalidPlaylistUrl, parse_public_playlist_url
+from app.services.spotify_oauth import refresh_access_token
 
 router = APIRouter()
 
@@ -140,6 +155,92 @@ def _get_owned_or_404(db: Session, set_id: int, user: User) -> Set:
     if set_obj is None:
         raise HTTPException(status_code=404, detail="Set not found")
     return set_obj
+
+
+@router.post(
+    "/sets/{set_id}/collaborator-invites",
+    response_model=CollaboratorInviteCreated,
+    status_code=status.HTTP_201_CREATED,
+)
+@limiter.limit("10/minute")
+def create_collaborator_invite(
+    set_id: int,
+    payload: CollaboratorInviteCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> CollaboratorInviteCreated:
+    """Create a single-use editor or viewer invitation for an owned set."""
+    set_obj = _get_owned_or_404(db, set_id, current_user)
+    invite, token = collaboration.create_invite(db, set_obj.id, current_user, payload.role)
+    return CollaboratorInviteCreated(token=token, role=invite.role, expires_at=invite.expires_at)
+
+
+@router.get("/sets/{set_id}/collaborator-invites", response_model=list[CollaboratorInviteOut])
+@limiter.limit("30/minute")
+def list_collaborator_invites(
+    set_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> list[CollaboratorInviteOut]:
+    """List invitation status for an owned set without exposing invite tokens."""
+    _get_owned_or_404(db, set_id, current_user)
+    return [
+        CollaboratorInviteOut(
+            id=invite.id,
+            role=invite.role,
+            created_at=invite.created_at,
+            expires_at=invite.expires_at,
+            accepted=invite.accepted_at is not None,
+            revoked=invite.revoked_at is not None,
+        )
+        for invite in collaboration.list_invites(db, set_id)
+    ]
+
+
+@router.delete("/sets/{set_id}/collaborator-invites/{invite_id}", status_code=204)
+@limiter.limit("30/minute")
+def revoke_collaborator_invite(
+    set_id: int,
+    invite_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> None:
+    """Revoke an unused invitation for an owned set."""
+    _get_owned_or_404(db, set_id, current_user)
+    invite = collaboration.get_invite_for_owner(db, set_id, invite_id)
+    if invite is None:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    try:
+        collaboration.revoke_invite(db, invite)
+    except collaboration.InviteAlreadyAccepted as exc:
+        raise HTTPException(
+            status_code=409, detail="Invite was accepted; revoke the collaborator instead"
+        ) from exc
+
+
+@router.post("/collaborator-invites/{token}/accept", response_model=CollaboratorAccepted)
+@limiter.limit("10/minute")
+def accept_collaborator_invite(
+    token: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> CollaboratorAccepted:
+    """Accept an invite with the recipient's active DJ account."""
+    try:
+        collaborator = collaboration.accept_invite(db, token, current_user)
+    except collaboration.InviteUnavailable as exc:
+        raise HTTPException(status_code=410, detail="Invite is no longer available") from exc
+    except collaboration.AlreadyCollaborator as exc:
+        raise HTTPException(status_code=409, detail="Already a collaborator") from exc
+    except collaboration.OwnerCannotAcceptInvite as exc:
+        raise HTTPException(
+            status_code=409, detail="Set owners cannot accept collaborator invites"
+        ) from exc
+    return CollaboratorAccepted(set_id=collaborator.set_id, role=collaborator.role)
 
 
 def _transition_scores_out(
@@ -220,6 +321,7 @@ def create_set(
     current_user: User = Depends(get_current_active_user),
 ) -> SetDetail:
     """Create a new empty set owned by the current DJ."""
+    require_owned_event_id(db, payload.event_id, current_user)
     set_obj = set_service.create_set(
         db, owner_id=current_user.id, name=payload.name, event_id=payload.event_id
     )
@@ -617,11 +719,14 @@ def _playback_report_out(report: playhistory_feedback.FeedbackReport) -> PlayHis
     )
 
 
-def _require_event_attached(set_obj: Set) -> None:
+def _require_event_attached(db: Session, set_obj: Set, user: User) -> None:
     if set_obj.event_id is None:
         raise HTTPException(
             status_code=400, detail="Set must be attached to an event for a playback report"
         )
+    # The binding is validated when written; re-check at read time as well so a
+    # row that predates that validation cannot read through to the event.
+    require_owned_event_id(db, set_obj.event_id, user)
 
 
 @router.get(
@@ -638,7 +743,7 @@ def get_playback_report(
 ) -> PlayHistoryFeedbackOut:
     """Planned-vs-actual report comparing the set's slots to the event's play history."""
     set_obj = _get_owned_or_404(db, set_id, current_user)
-    _require_event_attached(set_obj)
+    _require_event_attached(db, set_obj, current_user)
     report = playhistory_feedback.build_feedback_report(db, set_obj)
     return _playback_report_out(report)
 
@@ -657,7 +762,7 @@ def apply_playback_pairings(
 ) -> ApplyPairingFeedbackOut:
     """Feed real consecutive plays into pairing use-counts (explicit DJ action)."""
     set_obj = _get_owned_or_404(db, set_id, current_user)
-    _require_event_attached(set_obj)
+    _require_event_attached(db, set_obj, current_user)
     report = playhistory_feedback.build_feedback_report(db, set_obj)
     bumped = playhistory_feedback.apply_outcomes_to_pairings(db, set_obj, report)
     return ApplyPairingFeedbackOut(bumped=bumped, pairings=_pairings_state(db, set_obj))
@@ -1253,7 +1358,18 @@ def preview_pool_url(
     if not parsed.supported:
         return PoolUrlPreview(provider=parsed.provider, supported=False, message=parsed.message)
     try:
-        meta = pool.preview_public_playlist(db, current_user, parsed.provider, parsed.playlist_id)
+        if parsed.provider == "apple_music":
+            meta = pool.preview_public_playlist(
+                db,
+                current_user,
+                parsed.provider,
+                parsed.playlist_id,
+                storefront=parsed.storefront,
+            )
+        else:
+            meta = pool.preview_public_playlist(
+                db, current_user, parsed.provider, parsed.playlist_id
+            )
     except pool.PoolImportError as e:
         raise HTTPException(status_code=502, detail=str(e)) from None
     return PoolUrlPreview(provider=parsed.provider, supported=True, **meta)
@@ -1278,9 +1394,18 @@ def import_pool_url(
     if not parsed.supported:
         raise HTTPException(status_code=422, detail=parsed.message)
     try:
-        name, candidates = pool.candidates_from_public_url(
-            db, current_user, parsed.provider, parsed.playlist_id
-        )
+        if parsed.provider == "apple_music":
+            name, candidates = pool.candidates_from_public_url(
+                db,
+                current_user,
+                parsed.provider,
+                parsed.playlist_id,
+                storefront=parsed.storefront,
+            )
+        else:
+            name, candidates = pool.candidates_from_public_url(
+                db, current_user, parsed.provider, parsed.playlist_id
+            )
     except pool.PoolImportError as e:
         raise HTTPException(status_code=502, detail=str(e)) from None
     source = pool.get_or_create_source(
@@ -1603,7 +1728,9 @@ async def enrich_pool_vibes(
 
 def _unresolved_out(
     tracks: list[export_common.ExportTrack],
-    reason: Literal["no_tidal_match", "missing_metadata"],
+    reason: Literal[
+        "no_tidal_match", "no_spotify_match", "no_apple_music_match", "missing_metadata"
+    ],
 ) -> list[UnresolvedTrackOut]:
     return [
         UnresolvedTrackOut(
@@ -1633,7 +1760,14 @@ _UNRESOLVED_409_RESPONSE = {
 }
 
 
-@router.post("/sets/{set_id}/export/preflight", response_model=ExportPreflightOut)
+@router.post(
+    "/sets/{set_id}/export/preflight",
+    response_model=ExportPreflightOut,
+    responses={
+        502: {"description": "Apple Music catalog lookup failed."},
+        503: {"description": "Apple Music is not configured."},
+    },
+)
 @limiter.limit("5/minute")
 def export_preflight(
     set_id: int,
@@ -1664,6 +1798,57 @@ def export_preflight(
             resolved_count=len(resolved),
             unresolved=_unresolved_out(unresolved, "no_tidal_match"),
             tidal_connected=True,
+        )
+
+    if payload.target == "spotify":
+        if not refresh_access_token(db, current_user):
+            return ExportPreflightOut(
+                target=payload.target,
+                source=source,
+                total=len(tracks),
+                resolved_count=0,
+                unresolved=[],
+                spotify_connected=False,
+            )
+        resolved, unresolved = export_spotify.resolve_for_spotify(db, current_user, tracks)
+        return ExportPreflightOut(
+            target=payload.target,
+            source=source,
+            total=len(tracks),
+            resolved_count=len(resolved),
+            unresolved=_unresolved_out(unresolved, "no_spotify_match"),
+            spotify_connected=True,
+        )
+
+    if payload.target == "apple_music":
+        if not apple_music_tokens.is_configured():
+            raise HTTPException(status_code=503, detail="Apple Music is not configured")
+        try:
+            apple_music_accounts.stored_connection(db, current_user)
+        except apple_music_tokens.AppleMusicNotConnected:
+            return ExportPreflightOut(
+                target=payload.target,
+                source=source,
+                total=len(tracks),
+                resolved_count=0,
+                unresolved=[],
+                apple_music_connected=False,
+            )
+        try:
+            resolved, unresolved = apple_music_catalog.resolve_tracks(db, current_user, tracks)
+        except apple_music_tokens.AppleMusicNotConfigured:
+            raise HTTPException(status_code=503, detail="Apple Music is not configured") from None
+        except apple_music_tokens.AppleMusicError:
+            raise HTTPException(
+                status_code=502, detail="Apple Music catalog lookup failed"
+            ) from None
+        return ExportPreflightOut(
+            target=payload.target,
+            source=source,
+            total=len(tracks),
+            resolved_count=len(resolved),
+            unresolved=_unresolved_out(unresolved, "no_apple_music_match"),
+            apple_music_connected=True,
         )
 
     unresolved = export_files.file_unresolved(tracks)
@@ -1721,6 +1906,167 @@ def export_set_tidal(
         skipped=len(unresolved),
         exported_at=set_obj.exported_at,
         status=set_obj.status,
+    )
+
+
+@router.post(
+    "/sets/{set_id}/export/spotify",
+    response_model=ExportSpotifyOut,
+    responses={
+        400: {"description": "Spotify account not connected, or no exportable tracks."},
+        409: _UNRESOLVED_409_RESPONSE,
+        502: {"description": "Upstream Spotify export failed."},
+    },
+)
+@limiter.limit("5/minute")
+def export_set_spotify(
+    set_id: int,
+    payload: ExportSpotifyIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> ExportSpotifyOut:
+    """Export the ordered setlist to a new private Spotify playlist."""
+    set_obj = _get_owned_or_404(db, set_id, current_user)
+    if not refresh_access_token(db, current_user):
+        raise HTTPException(status_code=400, detail="Spotify account not connected")
+    _, tracks = export_common.collect_export_tracks(set_obj)
+    if not tracks:
+        raise HTTPException(status_code=400, detail="Set has no tracks to export")
+
+    resolved, unresolved = export_spotify.resolve_for_spotify(db, current_user, tracks)
+    if unresolved and not payload.skip_unresolved:
+        raise _unresolved_409(_unresolved_out(unresolved, "no_spotify_match"))
+    if not resolved:
+        raise HTTPException(status_code=400, detail="No resolvable tracks to export")
+
+    try:
+        outcome = export_spotify.export_to_spotify(db, current_user, set_obj, resolved)
+    except export_spotify.SpotifyNotConnected:
+        raise HTTPException(status_code=400, detail="Spotify account not connected") from None
+    except export_spotify.SpotifyExportError:
+        raise HTTPException(status_code=502, detail="Spotify export failed") from None
+
+    return ExportSpotifyOut(
+        playlist_id=outcome.playlist_id,
+        playlist_url=outcome.playlist_url,
+        added=outcome.added,
+        skipped=len(unresolved),
+        exported_at=set_obj.exported_at,
+        status=set_obj.status,
+    )
+
+
+@router.post(
+    "/sets/{set_id}/export/apple-music",
+    response_model=ExportAppleMusicOut,
+    responses={
+        400: {"description": "Apple Music account not connected, or no exportable tracks."},
+        409: {
+            **_UNRESOLVED_409_RESPONSE,
+            "description": (
+                "Unresolved tracks require confirmation, or another export is in progress."
+            ),
+        },
+        503: {"description": "Apple Music is not configured."},
+        502: {"description": "Apple Music export failed or its outcome is uncertain."},
+    },
+)
+@limiter.limit("5/minute")
+def export_set_apple_music(
+    set_id: int,
+    payload: ExportAppleMusicIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> ExportAppleMusicOut:
+    """Create and verify one ordered Apple Music library playlist."""
+    set_obj = _get_owned_or_404(db, set_id, current_user)
+    if not apple_music_tokens.is_configured():
+        raise HTTPException(status_code=503, detail="Apple Music is not configured")
+    _, tracks = export_common.collect_export_tracks(set_obj)
+    if not tracks:
+        raise HTTPException(status_code=400, detail="Set has no tracks to export")
+    try:
+        resolved, unresolved = apple_music_catalog.resolve_tracks(db, current_user, tracks)
+    except apple_music_tokens.AppleMusicNotConnected:
+        raise HTTPException(status_code=400, detail="Apple Music account not connected") from None
+    except apple_music_tokens.AppleMusicNotConfigured:
+        raise HTTPException(status_code=503, detail="Apple Music is not configured") from None
+    except apple_music_tokens.AppleMusicError:
+        raise HTTPException(status_code=502, detail="Apple Music catalog lookup failed") from None
+    if unresolved and not payload.skip_unresolved:
+        raise _unresolved_409(_unresolved_out(unresolved, "no_apple_music_match"))
+    if not resolved:
+        raise HTTPException(status_code=400, detail="No resolvable tracks to export")
+    try:
+        outcome = export_apple_music.export_to_apple_music(db, current_user, set_obj, resolved)
+    except apple_music_tokens.AppleMusicNotConnected:
+        raise HTTPException(status_code=400, detail="Apple Music account not connected") from None
+    except export_apple_music.AppleMusicExportInProgress:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "apple_music_export_in_progress",
+                "message": "An Apple Music export is already in progress for this set.",
+            },
+        ) from None
+    except export_apple_music.AppleMusicWriteUncertain as exc:
+        detail = {
+            "code": "apple_music_write_uncertain",
+            "message": (
+                "Apple Music export could not be confirmed. Check your library before trying again."
+            ),
+            "playlist_id": exc.playlist_id,
+        }
+        raise HTTPException(status_code=502, detail=detail) from None
+    except apple_music_tokens.AppleMusicUserAuthorizationError:
+        raise HTTPException(
+            status_code=400,
+            detail="Apple Music authorization was rejected. Reconnect your account.",
+        ) from None
+    except apple_music_tokens.AppleMusicError:
+        raise HTTPException(status_code=502, detail="Apple Music export failed") from None
+    return ExportAppleMusicOut(
+        playlist_id=outcome.playlist_id,
+        playlist_url=outcome.playlist_url,
+        added=outcome.added,
+        skipped=len(unresolved),
+        exported_at=set_obj.exported_at,
+        status=set_obj.status,
+    )
+
+
+@router.post(
+    "/sets/{set_id}/export/apple-music/recovery",
+    response_model=ExportAppleMusicRecoveryOut,
+)
+@limiter.limit("5/minute")
+def reconcile_apple_music_export(
+    set_id: int,
+    payload: ExportAppleMusicRecoveryIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+) -> ExportAppleMusicRecoveryOut:
+    """Let the DJ reconcile an ambiguous export after checking their Apple library."""
+    set_obj = _get_owned_or_404(db, set_id, current_user)
+    reconciled = export_apple_music.reconcile_uncertain_export(
+        db,
+        set_obj,
+        playlist_id=payload.playlist_id if payload.action == "playlist_found" else None,
+        confirm_playlist_absent=payload.action == "playlist_absent",
+    )
+    if not reconciled:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "apple_music_recovery_unavailable",
+                "message": "This set has no export awaiting reconciliation.",
+            },
+        )
+    return ExportAppleMusicRecoveryOut(
+        status="exported" if payload.action == "playlist_found" else "ready_to_retry"
     )
 
 

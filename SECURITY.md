@@ -9,6 +9,13 @@ covers the baseline (secrets, prompt-injection, dependency CVE/license policy).
 > in plaintext in the database — a retroactive fix. These rules prevent that class
 > of error from recurring.
 
+## Reporting a vulnerability
+
+Report suspected vulnerabilities privately through GitHub's advisory form:
+<https://github.com/wrzonance/WrzDJ/security/advisories/new>. Do not open a public
+issue for anything exploitable. Reports are acknowledged and triaged there, and a fix
+ships as a dated release (see `release.yml`) once verified.
+
 ## Sensitive Data at Rest
 
 - **Never store tokens, secrets, API keys, or credentials in plaintext.** Use the
@@ -39,6 +46,28 @@ covers the baseline (secrets, prompt-injection, dependency CVE/license policy).
 - Use parameterized queries exclusively — never construct SQL via string concatenation or
   f-strings.
 - Never use `eval()`, `exec()`, or dynamic code execution on user-supplied data.
+- **Long-lived streams are capped by concurrency, not rate.** The public SSE stream is exempt
+  from the nginx `limit_req` zone (a stream is one request), so `api.conf.template` applies a
+  per-address `limit_conn` to it instead (`SSE_CONN_LIMIT` in `setup-nginx.sh`, default 500).
+  A whole venue, DJ dashboard included, can share one NAT address and every open tab holds a
+  stream; past the cap new tabs get 429 and retry with exponential backoff capped at 30 s, and
+  the DJ request queue has no polling fallback. Size it for the largest room on venue wifi, and
+  lower it only with real connection counts in hand.
+
+### Single API process
+
+The API runs as **exactly one uvicorn worker** (`server/scripts/start.sh` passes `--workers 1`,
+which also overrides a host-supplied `WEB_CONCURRENCY`). Three pieces of state live in that
+process's memory and are only correct while there is one of it:
+
+- login lockout counters (`core/lockout.py`),
+- kiosk pairing nonces (`api/kiosk.py`),
+- the SSE event bus (`services/event_bus.py`).
+
+With a second worker, failed logins are counted per worker (lockout bypass), a pairing nonce is
+unknown to the worker that did not issue it, and guests miss live updates published on the other
+worker. Move all three to a shared store before raising the worker count. Lockout counters and
+nonces are also lost on restart; the edge and slowapi rate limits still apply.
 
 ## Authentication & Authorization
 
@@ -52,7 +81,7 @@ graph TD
         DJ[DJ / Admin] -->|username + password| Login["POST /api/auth/login"]
         Login -->|bcrypt verify, timing-safe| Users[(users table)]
         Login -->|sign HS256| JWT["JWT access token"]
-        JWT -->|Authorization: Bearer| DJEP["DJ / admin endpoints<br/>get_current_user → active → admin"]
+        JWT -->|"dashboard: HttpOnly cookie + X-Requested-With<br/>bridge-app: Authorization: Bearer"| DJEP["DJ / admin endpoints<br/>get_current_user → active → admin"]
     end
 
     subgraph guestflow["Guest — Turnstile + signed cookie"]
@@ -78,11 +107,22 @@ graph TD
     style TS fill:#f6821f,stroke:#ffb366,color:#ffffff
 ```
 
-- **DJ / admin — JWT.** `services/auth.py` signs an HS256 token with **PyJWT** (`JWT_SECRET`); the
-  frontend sends it as `Authorization: Bearer` (FastAPI `OAuth2PasswordBearer`). `decode_token` pins
-  `algorithms=["HS256"]` — blocks the `alg=none` / algorithm-confusion forgery class. Authorization
-  layers via DI: `get_current_user` → `get_current_active_user` (rejects pending) →
-  `get_current_admin`; last-admin protection guards demote/delete/deactivate.
+- **DJ / admin — JWT.** `services/auth.py` signs an HS256 token with **PyJWT** (`JWT_SECRET`).
+  `decode_token` pins `algorithms=["HS256"]` — blocks the `alg=none` / algorithm-confusion forgery
+  class. Two transports feed the same `get_current_user` (`api/deps.py`, #754): the **bridge-app**
+  sends `Authorization: Bearer`; the **dashboard** holds the token only in the HttpOnly,
+  `SameSite=Lax`, `Path=/api/` `wrzdj_session` cookie that `/api/auth/login` issues only to requests carrying the
+  CSRF header below (so a cross-site form POST cannot plant a session: login CSRF)
+  (`core/session_cookie.py`); page scripts cannot read it. The cookie is honoured **only** with
+  the `X-Requested-With: WrzDJ` header — a custom header a cross-site page cannot add without passing
+  a CORS preflight our origin list rejects — which is the CSRF defence; bearer requests need none.
+  `DELETE /api/auth/session` clears the cookie without revoking bearer tokens (a copied JWT stays valid
+  until expiry or a `token_version` bump); `POST /api/auth/logout` bumps `token_version` (revokes
+  everything) and clears it. Dev-only caveat: `CORS_ORIGINS=*` echoes any Origin with credentials, so
+  another local port could pass the header check there; production refuses `*` at startup. Any new browser-facing `X-*` header must
+  be added to the production CORS `allow_headers` list in `main.py`. Authorization layers via DI:
+  `get_current_user` → `get_current_active_user` (rejects pending) → `get_current_admin`; last-admin
+  protection guards demote/delete/deactivate.
 - **Passwords** are bcrypt-hashed directly (no `passlib`), never `EncryptedText` (see *Sensitive Data
   at Rest*). `authenticate_user` runs a dummy bcrypt check on the user-not-found path to equalize
   timing — no username enumeration.
@@ -149,6 +189,10 @@ graph TD
   packages with unpatched critical/high vulnerabilities.
 - Never ignore `pip-audit`, `npm audit`, or Dependabot alerts without documenting the
   specific justification and a remediation timeline.
+- `npm audit` is a blocking CI gate (`scripts/npm-audit-gate.cjs`): a high or critical advisory
+  fails the job unless `.npm-audit-ignore.json` lists it with a `reason` and an `expires` date.
+  An expired entry stops suppressing, so the finding returns on its own. Never add an ID there
+  just to go green.
 - Prefer well-maintained packages with active security response; pin production versions to
   avoid supply-chain attacks via compromised releases; review changelogs for security-relevant
   changes when updating.

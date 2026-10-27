@@ -21,6 +21,12 @@ logger = logging.getLogger(__name__)
 SPOTIFY_TIMEOUT = (5, 10)  # 5s connect, 10s read
 MAX_RETRIES = 2
 INITIAL_BACKOFF = 0.5  # seconds
+SEARCH_PAGE_SIZE = 10  # Spotify Development Mode limit since February 2026
+SEARCH_RESULT_LIMIT = 20
+# Share the former single-page connect/read and backoff allowance across both pages.
+SEARCH_TIME_BUDGET = (MAX_RETRIES + 1) * sum(SPOTIFY_TIMEOUT) + INITIAL_BACKOFF * (
+    2**MAX_RETRIES - 1
+)
 
 # Initialize Spotify client with client credentials flow (thread-safe)
 _sp: spotipy.Spotify | None = None
@@ -69,10 +75,14 @@ def search_songs(db: Session, query: str) -> list[SearchResult]:
     )
     if cached:
         results_data = json.loads(cached.results_json)
-        return [SearchResult(**r) for r in results_data]
+        # Older versions cached API failures as empty results. Retry those immediately.
+        if results_data:
+            return [SearchResult(**r) for r in results_data]
 
     # Call Spotify API
     results = _call_spotify_api(query)
+    if not results:
+        return []
 
     # Cache the results
     expires_at = utcnow() + timedelta(hours=settings.search_cache_hours)
@@ -99,15 +109,37 @@ def search_songs(db: Session, query: str) -> list[SearchResult]:
 
 
 def _call_spotify_api(query: str) -> list[SearchResult]:
-    """Make the actual API call to Spotify with retry logic."""
+    """Fetch up to 20 candidates using Spotify's 10-result search pages."""
     sp = _get_spotify_client()
+    deadline = time.monotonic() + SEARCH_TIME_BUDGET
+    tracks = []
+    for offset in range(0, SEARCH_RESULT_LIMIT, SEARCH_PAGE_SIZE):
+        response = _fetch_spotify_page(sp, query, offset, deadline)
+        if response is None:
+            # Do not cache an incomplete search as the full result set.
+            return []
+        page = response.get("tracks", {})
+        items = page.get("items", [])
+        tracks.extend(items)
+        if not items or not page.get("next"):
+            break
+    return _parse_spotify_tracks(tracks)
 
+
+def _fetch_spotify_page(
+    sp: spotipy.Spotify, query: str, offset: int, deadline: float
+) -> dict | None:
+    """Retry only the current page so earlier results are not requested again."""
     response = None
     last_exception = None
 
     for attempt in range(MAX_RETRIES + 1):
+        # Reserve a full connect/read allowance before starting another request.
+        if time.monotonic() + sum(SPOTIFY_TIMEOUT) > deadline:
+            logger.warning("Spotify search time budget exhausted")
+            return None
         try:
-            response = sp.search(q=query, type="track", limit=20)
+            response = sp.search(q=query, type="track", limit=SEARCH_PAGE_SIZE, offset=offset)
             break
         except (Timeout, ReadTimeout) as e:
             last_exception = e
@@ -122,14 +154,17 @@ def _call_spotify_api(query: str) -> list[SearchResult]:
                 logger.error(f"Spotify API timeout after {MAX_RETRIES + 1} attempts: {e}")
         except Exception as e:
             logger.error("Spotify API error: %s: %s", type(e).__name__, e)
-            return []
+            return None
 
     if response is None:
         logger.error(f"Spotify API failed after retries: {last_exception}")
-        return []
+    return response
 
+
+def _parse_spotify_tracks(tracks: list[dict]) -> list[SearchResult]:
+    """Preserve Spotify's candidate order and the existing metadata mapping."""
     results = []
-    for track in response.get("tracks", {}).get("items", []):
+    for track in tracks:
         title = track.get("name", "")
         spotify_id = track.get("id")
         popularity = track.get("popularity", 0)
