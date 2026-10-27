@@ -1,15 +1,15 @@
 """Add vibe_events table and events.vibe_keep_no_song.
 
-Revision ID: 070
-Revises: 069
+Revision ID: 075
+Revises: 074
 """
 
 import sqlalchemy as sa
 
 from alembic import op
 
-revision = "074"
-down_revision = "073"
+revision = "075"
+down_revision = "074"
 branch_labels = None
 depends_on = None
 
