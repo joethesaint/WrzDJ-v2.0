@@ -1,6 +1,11 @@
+import React from 'react';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import AdminEventsPage from '../page';
+
+vi.mock('@/components/PageControls', () => ({
+  PageControls: ({ children }: { children?: React.ReactNode }) => <div data-testid="page-controls">{children}</div>,
+}));
 
 vi.mock('@/lib/help/HelpContext', () => ({
   useHelp: () => ({
@@ -87,6 +92,7 @@ describe('AdminEventsPage', () => {
   it('renders page heading', async () => {
     render(<AdminEventsPage />);
     expect(screen.getByText('Event Management')).toBeInTheDocument();
+    expect(screen.getByTestId('page-controls')).toBeInTheDocument();
   });
 
   it('displays events in table', async () => {
