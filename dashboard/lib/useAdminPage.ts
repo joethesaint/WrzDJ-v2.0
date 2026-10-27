@@ -1,7 +1,7 @@
 'use client';
 
 import { Dispatch, SetStateAction, useCallback, useEffect, useRef, useState } from 'react';
-import { useHelp } from '@/lib/help/HelpContext';
+import { useAutoOnboarding } from '@/lib/help/useAutoOnboarding';
 
 export interface UseAdminPageConfig<T> {
   pageId: string;
@@ -25,24 +25,29 @@ export function useAdminPage<T>({
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const { hasSeenPage, startOnboarding, onboardingActive } = useHelp();
 
   const loaderRef = useRef(loader);
   loaderRef.current = loader;
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
+  // Last request wins: a slow earlier load must not overwrite a newer one's
+  // data after the user changed page, filter, or search.
+  const requestIdRef = useRef(0);
 
   const reload = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     try {
       const result = await loaderRef.current();
+      if (requestId !== requestIdRef.current) return;
       setData(result);
       setError('');
     } catch (err) {
+      if (requestId !== requestIdRef.current) return;
       const handler = onErrorRef.current;
       setError(handler ? handler(err) : 'Failed to load');
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
   }, []);
 
@@ -50,12 +55,7 @@ export function useAdminPage<T>({
     reload();
   }, [reload]);
 
-  useEffect(() => {
-    if (data !== null && !onboardingActive && !hasSeenPage(pageId)) {
-      const timer = setTimeout(() => startOnboarding(pageId), 500);
-      return () => clearTimeout(timer);
-    }
-  }, [data, onboardingActive, hasSeenPage, startOnboarding, pageId]);
+  useAutoOnboarding(pageId, data !== null);
 
   return { data, loading, error, reload, setData };
 }

@@ -4,7 +4,6 @@ import { useEffect, type ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
-import { ThemeToggle } from '@/components/ThemeToggle';
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading, role, logout } = useAuth();
@@ -31,6 +30,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     { href: '/admin', label: 'Overview' },
     { href: '/admin/users', label: 'Users' },
     { href: '/admin/events', label: 'Events' },
+    { href: '/admin/guests', label: 'Guests' },
     { href: '/admin/integrations', label: 'Integrations' },
     { href: '/admin/ai', label: 'AI / LLM' },
     { href: '/admin/settings', label: 'Settings' },
@@ -38,14 +38,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   return (
     <>
-      <div style={{
-        position: 'fixed',
-        top: '1rem',
-        right: '4.5rem',
-        zIndex: 1050,
-      }}>
-        <ThemeToggle />
-      </div>
       <div className="admin-layout">
         <aside className="admin-sidebar">
           <div className="admin-sidebar-header">

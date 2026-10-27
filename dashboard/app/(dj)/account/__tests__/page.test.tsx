@@ -1,9 +1,14 @@
+import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import AccountPage from '../page';
 import { LocaleProvider } from '@/lib/locale';
 
 const mockPush = vi.fn();
+vi.mock('@/components/PageControls', () => ({
+  PageControls: ({ children }: { children?: React.ReactNode }) => <div data-testid="page-controls">{children}</div>,
+}));
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
 }));
@@ -76,6 +81,7 @@ describe('AccountPage', () => {
       expect(screen.getByText('Change Password')).toBeInTheDocument();
       expect(screen.getByText('Change Email')).toBeInTheDocument();
     });
+    expect(screen.getByTestId('page-controls')).toBeInTheDocument();
   });
 
   it('renders the relocated AI / Model providers section', async () => {
