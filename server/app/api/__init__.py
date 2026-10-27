@@ -2,7 +2,10 @@ from fastapi import APIRouter
 
 from app.api import (
     admin,
+    admin_guests,
     admin_llm,
+    apple_music,
+    apple_music_tokens,
     auth,
     beatport,
     bridge,
@@ -17,6 +20,7 @@ from app.api import (
     setbuilder,
     setbuilder_share,
     setbuilder_templates,
+    spotify,
     sse,
     tidal,
     verify,
@@ -51,8 +55,12 @@ api_router.include_router(sse.router, prefix="/public", tags=["sse"])
 api_router.include_router(bridge.router, tags=["bridge"])
 api_router.include_router(tidal.router, prefix="/tidal", tags=["tidal"])
 api_router.include_router(beatport.router, prefix="/beatport", tags=["beatport"])
+api_router.include_router(spotify.router, prefix="/spotify", tags=["spotify"])
+api_router.include_router(apple_music_tokens.router, prefix="/apple-music", tags=["apple-music"])
+api_router.include_router(apple_music.router, prefix="/apple-music", tags=["apple-music"])
 api_router.include_router(kiosk.public_router, prefix="/public/kiosk", tags=["kiosk"])
 api_router.include_router(kiosk.auth_router, prefix="/kiosk", tags=["kiosk"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
+api_router.include_router(admin_guests.router, prefix="/admin", tags=["admin"])
 api_router.include_router(llm.router, prefix="/llm", tags=["llm"])
 api_router.include_router(admin_llm.router, prefix="/admin/llm", tags=["admin", "llm"])

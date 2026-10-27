@@ -37,7 +37,6 @@ from app.schemas.collect import (
     CollectProfileResponse,
     CollectSubmitRequest,
     CollectVoteRequest,
-    EnrichPreviewItem,  # noqa: F401
     EnrichPreviewRequest,
     EnrichPreviewResponse,
     EnrichPreviewResult,
@@ -118,7 +117,7 @@ def _banner_colors_for_event(event: Event) -> list[str] | None:
         if isinstance(value, list) and all(isinstance(c, str) for c in value):
             return value
     except (_json.JSONDecodeError, TypeError):
-        pass
+        pass  # malformed stored value: treat as no custom colours
     return None
 
 
@@ -236,10 +235,19 @@ def set_profile(
     payload: CollectProfileRequest,
     request: Request,
     db: Session = Depends(get_db),
-    guest_id: int = Depends(require_email_verified),
+    guest_id: int = Depends(require_verified_human),
 ):
+    # The email gate is checked here rather than as a dependency so the name is
+    # judged first (#853): FastAPI runs dependencies before it reports body
+    # validation errors, which sent guests through the email-code step only to
+    # have a profane or taken name refused once they had verified.
     event = _get_event_or_404(db, code)
     try:
+        if payload.nickname is not None:
+            collect_service.ensure_nickname_available(
+                db, event_id=event.id, guest_id=guest_id, nickname=payload.nickname
+            )
+        require_email_verified(db=db, guest_id=guest_id)
         profile = upsert_profile(
             db,
             event_id=event.id,

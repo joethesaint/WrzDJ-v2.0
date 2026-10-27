@@ -10,13 +10,19 @@ on:
         required: false
         default: 'all'
 
+# Read-only default for every job; jobs that need more declare it themselves.
+permissions:
+  contents: read
+
 jobs:
   validate-tag:
     name: Validate tag format
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Reject malformed tags
         env:
           TAG: ${{ github.ref_name }}
@@ -48,23 +54,32 @@ jobs:
       - name: Check platform filter
         id: filter
         shell: bash
+        env:
+          # Pass workflow inputs through env rather than expanding them inside
+          # the script (zizmor template-injection).
+          PLATFORMS_INPUT: ${{ inputs.platforms || 'all' }}
+          MATRIX_PLATFORM: ${{ matrix.platform }}
         run: |
-          PLATFORMS="${{ inputs.platforms || 'all' }}"
-          if [[ "$PLATFORMS" == "all" || "$PLATFORMS" == *"${{ matrix.platform }}"* ]]; then
+          PLATFORMS="$PLATFORMS_INPUT"
+          if [[ "$PLATFORMS" == "all" || "$PLATFORMS" == *"$MATRIX_PLATFORM"* ]]; then
             echo "skip=false" >> "$GITHUB_OUTPUT"
           else
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "Skipping ${{ matrix.platform }} (not in: $PLATFORMS)"
           fi
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.filter.outputs.skip != 'true'
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         if: steps.filter.outputs.skip != 'true'
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "22"
+          node-version: "24"
+          # Release artifacts must not consume shared dependency caches.
+          package-manager-cache: false
 
       - name: Install AppImage dependencies
         if: steps.filter.outputs.skip != 'true' && matrix.platform == 'linux'
@@ -125,7 +140,7 @@ jobs:
 
       - name: Upload build artifacts
         if: steps.filter.outputs.skip != 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bridge-app-${{ matrix.platform }}${{ matrix.arch && format('-{0}', matrix.arch) || '' }}
           path: bridge-app/out/make/**/*
@@ -135,7 +150,9 @@ jobs:
     name: Bundle deploy scripts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Create deploy bundle
         run: |
@@ -150,7 +167,7 @@ jobs:
             docker-compose.yml
 
       - name: Upload deploy bundle
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: deploy-scripts
           path: wrzdj-deploy-scripts.tar.gz
@@ -163,12 +180,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Download all artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: artifacts
 
@@ -200,7 +218,10 @@ jobs:
           EOF
 
       - name: Create release
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v2
+        # Keep the SHA-pinned release action's multi-artifact upload behavior;
+        # replacing it with shell code adds no security boundary here.
+        # zizmor: ignore[superfluous-actions]
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ github.ref_name }}
           name: "WrzDJ ${{ github.ref_name }}"
@@ -224,7 +245,9 @@ jobs:
     env:
       REF_NAME: ${{ github.ref_name }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Compute semver from tag
         shell: pwsh

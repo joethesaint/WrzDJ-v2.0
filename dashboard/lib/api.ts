@@ -1,5 +1,9 @@
 import type {
   AdminEvent,
+  AdminGuest,
+  AdminGuestFilter,
+  AdminGuestProfileUpdate,
+  AdminGuestUpdate,
   AdminUser,
   AIModelsResponse,
   AISettings,
@@ -27,9 +31,14 @@ import type {
   BeatportEventSettings,
   BeatportSearchResult,
   BeatportStatus,
+  AppleMusicStatus,
+  AppleMusicDeveloperToken,
   BridgeCommandResponse,
   BuildSetResponse,
   BuilderPlaylists,
+  CollaboratorAccepted,
+  CollaboratorInvite,
+  CollaboratorInviteCreated,
   DisplaySettingsResponse,
   PublicBridgeStatus,
   Event,
@@ -103,11 +112,20 @@ import type {
   ExportFileFormat,
   ExportPreflight,
   ExportTidalResult,
+  ExportSpotifyResult,
+  ExportAppleMusicResult,
+  ExportAppleMusicRecoveryRequest,
+  ExportAppleMusicRecoveryResult,
 } from './api-types';
 
 export type {
   ActivityLogEntry,
   AdminEvent,
+  AdminGuest,
+  AdminGuestEvent,
+  AdminGuestFilter,
+  AdminGuestProfileUpdate,
+  AdminGuestUpdate,
   AdminUser,
   AIModelInfo,
   AIModelsResponse,
@@ -142,6 +160,8 @@ export type {
   BeatportEventSettings,
   BeatportSearchResult,
   BeatportStatus,
+  AppleMusicStatus,
+  AppleMusicDeveloperToken,
   BridgeCommandResponse,
   BridgeEnrichedStatus,
   BuildSetResponse,
@@ -215,6 +235,10 @@ export type {
   ExportFileFormat,
   ExportPreflight,
   ExportTidalResult,
+  ExportSpotifyResult,
+  ExportAppleMusicResult,
+  ExportAppleMusicRecoveryRequest,
+  ExportAppleMusicRecoveryResult,
   UnresolvedTrack,
 } from './api-types';
 
@@ -321,11 +345,50 @@ export interface BulkReviewResponse {
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  code?: string;
+  detail?: unknown;
+  constructor(message: string, status: number, code?: string, detail?: unknown) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = code;
+    this.detail = detail;
   }
+}
+
+// FastAPI reports request-validation failures (422) as a list of Pydantic
+// items. Pydantic prefixes custom validator messages with "Value error, ";
+// those are written for people and stand on their own, while its built-in
+// messages ("String should have at least 2 characters") read better with the
+// field name in front. Only the first item is shown: the forms are per-field.
+function validationMessage(items: unknown[]): string | null {
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue;
+    const { msg, loc } = item as { msg?: unknown; loc?: unknown };
+    if (typeof msg !== 'string' || !msg) continue;
+    const valueError = msg.match(/^Value error, (.+)$/);
+    if (valueError) return valueError[1];
+    const field = Array.isArray(loc) && loc[0] === 'body' && typeof loc[1] === 'string' ? loc[1] : null;
+    return field ? `${field}: ${msg}` : msg;
+  }
+  return null;
+}
+
+function apiErrorFromBody(body: unknown, status: number): ApiError {
+  const errorObject = body && typeof body === 'object'
+    ? body as { detail?: unknown }
+    : null;
+  const detail = errorObject?.detail;
+  const detailObject = detail && typeof detail === 'object' && !Array.isArray(detail)
+    ? detail as { code?: unknown; message?: unknown }
+    : null;
+  const message = typeof detail === 'string'
+    ? detail
+    : typeof detailObject?.message === 'string'
+      ? detailObject.message
+      : (Array.isArray(detail) && validationMessage(detail)) || 'Request failed';
+  const code = typeof detailObject?.code === 'string' ? detailObject.code : undefined;
+  return new ApiError(message, status, code, detail);
 }
 
 export class NicknameConflictError extends Error {
@@ -395,13 +458,13 @@ export async function withHumanRetry<T>(
   }
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: 'Request failed' }));
-    if (error?.detail?.code === 'human_verification_required') {
+    if (apiErrorFromBody(error, res.status).code === 'human_verification_required') {
       // Still unverified after the one retry — surface a typed error so pages
       // can distinguish "bot check pending/failed" from feature-level 403s
       // (e.g. frictionless_disabled). See issue #419.
       throw new HumanVerificationRequiredError();
     }
-    throw new ApiError(error.detail || 'Request failed', res.status);
+    throw apiErrorFromBody(error, res.status);
   }
   return res.json();
 }
@@ -418,6 +481,16 @@ function getApiUrl(): string {
   // SSR fallback
   return 'http://localhost:8000';
 }
+
+/**
+ * CSRF header for cookie-authenticated requests (issue #754). The DJ session now
+ * lives in an HttpOnly cookie the browser attaches on its own, so the server only
+ * honours that cookie when this custom header is present too: a cross-site page
+ * cannot add custom headers without passing a CORS preflight our origin list
+ * rejects. Harmless on bearer and anonymous requests.
+ */
+export const CSRF_HEADER_NAME = 'X-Requested-With';
+export const CSRF_HEADER_VALUE = 'WrzDJ';
 
 class ApiClient {
   private token: string | null = null;
@@ -461,8 +534,10 @@ class ApiClient {
     if (this.token) {
       headers.set('Authorization', `Bearer ${this.token}`);
     }
+    headers.set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE);
 
     const response = await fetch(`${getApiUrl()}${path}`, {
+      credentials: 'include',
       ...options,
       headers,
     });
@@ -472,7 +547,7 @@ class ApiClient {
         this.onUnauthorized();
       }
       const error = await response.json().catch(() => ({ detail: 'Request failed' }));
-      throw new ApiError(typeof error.detail === 'string' ? error.detail : 'Request failed', response.status);
+      throw apiErrorFromBody(error, response.status);
     }
 
     if (response.status === 204) {
@@ -491,16 +566,17 @@ class ApiClient {
     if (this.token) {
       headers.set('Authorization', `Bearer ${this.token}`);
     }
+    headers.set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE);
 
     const url = path.startsWith('http') ? path : `${getApiUrl()}${path}`;
-    const response = await fetch(url, { ...init, headers });
+    const response = await fetch(url, { credentials: 'include', ...init, headers });
 
     if (!response.ok) {
       if (response.status === 401 && this.onUnauthorized) {
         this.onUnauthorized();
       }
       const error = await response.json().catch(() => ({ detail: 'Request failed' }));
-      throw new ApiError(typeof error.detail === 'string' ? error.detail : 'Request failed', response.status);
+      throw apiErrorFromBody(error, response.status);
     }
 
     return response;
@@ -514,7 +590,7 @@ class ApiClient {
     const response = await fetch(url);
     if (!response.ok) {
       const error = await response.json().catch(() => ({ detail: 'Request failed' }));
-      throw new ApiError(typeof error.detail === 'string' ? error.detail : 'Request failed', response.status);
+      throw apiErrorFromBody(error, response.status);
     }
     return response.json();
   }
@@ -523,8 +599,14 @@ class ApiClient {
    * Download a CSV blob from an authenticated endpoint and trigger browser download.
    * Parses filename from Content-Disposition header, falling back to the provided default.
    */
-  private async downloadCsvBlob(url: string, defaultFilename: string): Promise<void> {
+  private async downloadCsvBlob(url: string, defaultFilename: string): Promise<boolean | null> {
     const response = await this.rawFetch(url);
+    const truncationHeader = response.headers.get('X-Export-Truncated');
+    const truncated = truncationHeader === 'true'
+      ? true
+      : truncationHeader === 'false'
+        ? false
+        : null;
     const blob = await response.blob();
     const blobUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -534,6 +616,7 @@ class ApiClient {
     a.download = filenameMatch ? filenameMatch[1].replace(/"/g, '') : defaultFilename;
     a.click();
     URL.revokeObjectURL(blobUrl);
+    return truncated;
   }
 
   async login(username: string, password: string): Promise<{ access_token: string }> {
@@ -541,12 +624,18 @@ class ApiClient {
     formData.append('username', username);
     formData.append('password', password);
 
+    // credentials: 'include' lets the browser store the HttpOnly session cookie
+    // the API sets on success (#754); the body token is for bearer clients only.
+    // The CSRF header is what makes the API issue that cookie at all: a cross-site
+    // form POST cannot add it, so it cannot plant a session (login CSRF).
     const response = await fetch(`${getApiUrl()}/api/auth/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
+        [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE,
       },
       body: formData,
+      credentials: 'include',
     });
 
     if (!response.ok) {
@@ -559,6 +648,11 @@ class ApiClient {
     }
 
     return response.json();
+  }
+
+  /** End this browser's dashboard session (clears the cookie; bearer tokens stay valid). */
+  async endSession(): Promise<void> {
+    await this.fetch<{ status: string }>('/api/auth/session', { method: 'DELETE' });
   }
 
   async getMe(): Promise<{
@@ -985,6 +1079,28 @@ class ApiClient {
   async revokeSetShare(setId: number): Promise<void> {
     await this.rawFetch(`/api/setbuilder/sets/${setId}/share`, { method: 'DELETE' });
   }
+  async createCollaboratorInvite(
+    setId: number,
+    role: 'editor' | 'viewer'
+  ): Promise<CollaboratorInviteCreated> {
+    return this.fetch(`/api/setbuilder/sets/${setId}/collaborator-invites`, {
+      method: 'POST',
+      body: JSON.stringify({ role }),
+    });
+  }
+  async listCollaboratorInvites(setId: number): Promise<CollaboratorInvite[]> {
+    return this.fetch(`/api/setbuilder/sets/${setId}/collaborator-invites`);
+  }
+  async revokeCollaboratorInvite(setId: number, inviteId: number): Promise<void> {
+    await this.rawFetch(`/api/setbuilder/sets/${setId}/collaborator-invites/${inviteId}`, {
+      method: 'DELETE',
+    });
+  }
+  async acceptCollaboratorInvite(token: string): Promise<CollaboratorAccepted> {
+    return this.fetch(`/api/setbuilder/collaborator-invites/${encodeURIComponent(token)}/accept`, {
+      method: 'POST',
+    });
+  }
   /** Public, unauthenticated read-only view of a shared set. */
   async getSharedSet(token: string): Promise<SharedSetView> {
     return this.publicFetch(
@@ -1029,6 +1145,40 @@ class ApiClient {
     return this.fetch(`/api/setbuilder/sets/${setId}/export/tidal`, {
       method: 'POST',
       body: JSON.stringify({ skip_unresolved: skipUnresolved }),
+    });
+  }
+
+  async startSpotifyAuthorization(): Promise<{ authorization_url: string }> {
+    return this.fetch('/api/spotify/auth/start', {
+      method: 'POST',
+      credentials: 'include',
+    });
+  }
+
+  async exportSetToSpotify(setId: number, skipUnresolved: boolean): Promise<ExportSpotifyResult> {
+    return this.fetch(`/api/setbuilder/sets/${setId}/export/spotify`, {
+      method: 'POST',
+      body: JSON.stringify({ skip_unresolved: skipUnresolved }),
+    });
+  }
+
+  async exportSetToAppleMusic(
+    setId: number,
+    skipUnresolved: boolean
+  ): Promise<ExportAppleMusicResult> {
+    return this.fetch(`/api/setbuilder/sets/${setId}/export/apple-music`, {
+      method: 'POST',
+      body: JSON.stringify({ skip_unresolved: skipUnresolved }),
+    });
+  }
+
+  async reconcileAppleMusicExport(
+    setId: number,
+    request: ExportAppleMusicRecoveryRequest,
+  ): Promise<ExportAppleMusicRecoveryResult> {
+    return this.fetch(`/api/setbuilder/sets/${setId}/export/apple-music/recovery`, {
+      method: 'POST',
+      body: JSON.stringify(request),
     });
   }
 
@@ -1142,7 +1292,10 @@ class ApiClient {
     nickname?: string,
     reverify?: () => Promise<void>,
   ): Promise<SongRequest> {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE,
+    };
     if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
     if (this.kioskSession) headers['X-Kiosk-Session'] = this.kioskSession;
     const doFetch = () =>
@@ -1192,7 +1345,7 @@ class ApiClient {
       // Send the JWT when present: the authenticated event owner (DJ dashboard
       // "Search for Song") bypasses the guest human-verification gate. Guests
       // have no token and fall through to the cookie-based gate + reverify retry.
-      const headers: Record<string, string> = {};
+      const headers: Record<string, string> = { [CSRF_HEADER_NAME]: CSRF_HEADER_VALUE };
       if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
       if (this.kioskSession) headers['X-Kiosk-Session'] = this.kioskSession;
       return fetch(`${getApiUrl()}/api/events/${code}/search?q=${encodeURIComponent(query)}`, {
@@ -1243,14 +1396,14 @@ class ApiClient {
     return this.fetch('/api/events/archived');
   }
 
-  async exportEventCsv(code: string): Promise<void> {
+  async exportEventCsv(code: string): Promise<boolean | null> {
     return this.downloadCsvBlob(
       `${getApiUrl()}/api/events/${code}/export/csv`,
       `${code}.csv`
     );
   }
 
-  async exportPlayHistoryCsv(code: string): Promise<void> {
+  async exportPlayHistoryCsv(code: string): Promise<boolean | null> {
     return this.downloadCsvBlob(
       `${getApiUrl()}/api/events/${code}/export/play-history/csv`,
       `${code}_play_history.csv`
@@ -1390,6 +1543,25 @@ class ApiClient {
   }
 
   // ========== Tidal Integration ==========
+
+  async getAppleMusicStatus(): Promise<AppleMusicStatus> {
+    return this.fetch('/api/apple-music/status');
+  }
+
+  async getAppleMusicDeveloperToken(): Promise<AppleMusicDeveloperToken> {
+    return this.fetch('/api/apple-music/developer-token');
+  }
+
+  async linkAppleMusicAccount(musicUserToken: string): Promise<AppleMusicStatus> {
+    return this.fetch('/api/apple-music/link', {
+      method: 'POST',
+      body: JSON.stringify({ music_user_token: musicUserToken }),
+    });
+  }
+
+  async disconnectAppleMusicAccount(): Promise<void> {
+    await this.fetch('/api/apple-music/disconnect', { method: 'POST' });
+  }
 
   /**
    * Get Tidal account status for current user.
@@ -1627,6 +1799,41 @@ class ApiClient {
     });
   }
 
+  // ========== Admin guests (#862) ==========
+
+  async getAdminGuests(
+    page: number = 1,
+    limit: number = 20,
+    filter: AdminGuestFilter = 'all',
+    q?: string
+  ): Promise<PaginatedResponse<AdminGuest>> {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit), filter });
+    if (q) params.set('q', q);
+    return this.fetch(`/api/admin/guests?${params}`);
+  }
+
+  async updateAdminGuest(guestId: number, data: AdminGuestUpdate): Promise<AdminGuest> {
+    return this.fetch(`/api/admin/guests/${guestId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateAdminGuestProfile(
+    guestId: number,
+    eventId: number,
+    data: AdminGuestProfileUpdate
+  ): Promise<AdminGuest> {
+    return this.fetch(`/api/admin/guests/${guestId}/events/${eventId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteAdminGuest(guestId: number): Promise<void> {
+    await this.fetch(`/api/admin/guests/${guestId}`, { method: 'DELETE' });
+  }
+
   async getAdminSettings(): Promise<SystemSettings> {
     return this.fetch('/api/admin/settings');
   }
@@ -1736,11 +1943,13 @@ class ApiClient {
   ): Promise<void> {
     const headers = new Headers({ Accept: 'text/event-stream' });
     if (this.token) headers.set('Authorization', `Bearer ${this.token}`);
+    headers.set(CSRF_HEADER_NAME, CSRF_HEADER_VALUE);
 
     const response = await fetch(`${getApiUrl()}/api/llm/connectors/${id}/stream-test`, {
       method: 'POST',
       headers,
       signal,
+      credentials: 'include',
     });
     if (!response.ok || !response.body) {
       if (response.status === 401 && this.onUnauthorized) this.onUnauthorized();
@@ -2094,21 +2303,25 @@ class ApiClient {
     data: { nickname?: string },
     reverify?: () => Promise<void>,
   ): Promise<CollectProfileResponse> {
-    const doFetch = () =>
-      fetch(`${getApiUrl()}/api/public/collect/${code}/profile`, {
+    // The collision is mapped inside doFetch so it survives withHumanRetry,
+    // which would otherwise flatten the 409 into a generic ApiError.
+    const doFetch = async () => {
+      const res = await fetch(`${getApiUrl()}/api/public/collect/${code}/profile`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(data),
       });
+      if (res.status === 409) {
+        const body = await res.json().catch(() => ({})) as { detail?: { claimed?: boolean } };
+        throw new NicknameConflictError(body.detail?.claimed ?? false);
+      }
+      return res;
+    };
     if (reverify) {
       return withHumanRetry<CollectProfileResponse>(doFetch, reverify);
     }
     const res = await doFetch();
-    if (res.status === 409) {
-      const body = await res.json().catch(() => ({})) as { detail?: { claimed?: boolean } };
-      throw new NicknameConflictError(body.detail?.claimed ?? false);
-    }
     if (!res.ok) throw new ApiError(`setCollectProfile failed: ${res.status}`, res.status);
     return res.json();
   }

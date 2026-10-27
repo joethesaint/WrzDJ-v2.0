@@ -1,10 +1,15 @@
+# Runs the repository's backend, frontend, and bridge verification checks.
+# dont go into the forest alone with sub agents
 name: CI
 
 on:
   push:
     branches: [main, develop]
   pull_request:
-    branches: [main, develop]
+
+# Read-only default for every job; jobs that need more declare it themselves.
+permissions:
+  contents: read
 
 jobs:
   backend:
@@ -16,7 +21,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16
+        image: postgres:18
         env:
           POSTGRES_USER: wrzdj
           POSTGRES_PASSWORD: wrzdj
@@ -30,12 +35,14 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.11"
+          python-version: "3.14"
           cache: "pip"
           cache-dependency-path: server/pyproject.toml
 
@@ -49,6 +56,21 @@ jobs:
 
       - name: Format check with ruff
         run: ruff format --check .
+
+      # The frontend job regenerates the TypeScript types from server/openapi.json,
+      # but nothing checks that file against the app itself. Regenerate it with the
+      # same script developers use, so a route or schema change without a re-export
+      # fails here instead of drifting silently. Needs no database, so it runs early.
+      - name: Check committed OpenAPI schema is current
+        env:
+          JWT_SECRET: test-secret-key
+          ENV: development
+        run: |
+          python scripts/export_openapi.py
+          git diff --exit-code -- openapi.json || {
+            echo "::error file=server/openapi.json::openapi.json is stale. Run 'python scripts/export_openapi.py' in server/, then 'npm run types:generate' in dashboard/, and commit both files."
+            exit 1
+          }
 
       - name: Security scan with bandit
         run: bandit -r app -c pyproject.toml
@@ -92,7 +114,7 @@ jobs:
         run: alembic upgrade head && alembic check
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: server/coverage.xml
           flags: backend
@@ -106,12 +128,14 @@ jobs:
         working-directory: dashboard
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "22"
+          node-version: "24"
           cache: "npm"
           cache-dependency-path: dashboard/package-lock.json
 
@@ -122,14 +146,32 @@ jobs:
         run: npm run lint
 
       - name: Type check
-        run: npx tsc --noEmit
+        run: |
+          # The compiler must be TypeScript 7 (@typescript/native), not the 6.x
+          # API package that the lint and codegen tools import.
+          npx tsc --version | grep -q '^Version 7\.'
+          npx tsc --noEmit
+
+      # Runs the real generator, so a dependency bump that breaks it (or a
+      # server/openapi.json change without regenerated types) fails here.
+      - name: Check generated API types are current
+        run: |
+          npm run types:generate
+          git diff --exit-code -- lib/api-types.generated.ts
 
       - name: Run tests with coverage
         run: npm test -- --run --coverage
 
+      - name: Test the npm audit gate
+        run: node --test ../scripts/npm-audit-gate.test.cjs
+
+      - name: Test dependency reporting shell safety
+        run: node --test ../scripts/dependency-health.test.cjs
+
       - name: Security audit
-        run: npm audit --audit-level=high
-        continue-on-error: true
+        # Blocking: high/critical advisories fail unless .npm-audit-ignore.json
+        # lists them with a justification and an unexpired date.
+        run: node ../scripts/npm-audit-gate.cjs
 
   bridge:
     name: Bridge Tests
@@ -139,12 +181,14 @@ jobs:
         working-directory: bridge
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "22"
+          node-version: "24"
           cache: "npm"
           cache-dependency-path: bridge/package-lock.json
 
@@ -158,8 +202,9 @@ jobs:
         run: npm test -- --run --coverage
 
       - name: Security audit
-        run: npm audit --audit-level=high
-        continue-on-error: true
+        # Blocking: high/critical advisories fail unless .npm-audit-ignore.json
+        # lists them with a justification and an unexpired date.
+        run: node ../scripts/npm-audit-gate.cjs
 
   bridge-app:
     name: Bridge App Tests
@@ -169,12 +214,14 @@ jobs:
         working-directory: bridge-app
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: "22"
+          node-version: "24"
           cache: "npm"
           cache-dependency-path: bridge-app/package-lock.json
 
@@ -185,15 +232,48 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Lint
+        run: npm run lint
+
       - name: Type check
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       - name: Run tests with coverage
         run: npm test -- --run --coverage
 
+      - name: Package and test Electron runtime
+        run: |
+          npm run package -- --platform=linux --arch=x64
+          node ../scripts/test-bridge-app-package.cjs \
+            "out/WrzDJ Bridge-linux-x64/wrzdj-bridge.real" \
+            "out/WrzDJ Bridge-linux-x64/resources"
+
+      - name: Test packaged renderer and preload
+        run: |
+          xvfb-run --auto-servernum node ../scripts/test-bridge-app-ui.cjs \
+            "out/WrzDJ Bridge-linux-x64/wrzdj-bridge"
+
+      - name: Make and test AppImage
+        run: |
+          if ! command -v mksquashfs >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends squashfs-tools
+          fi
+          npm run make -- --platform=linux --arch=x64 --from-package
+          appimage=$(realpath out/make/AppImage/x64/WrzDJ-Bridge.AppImage)
+          artifact_dir=$(mktemp -d)
+          trap 'rm -rf "$artifact_dir"' EXIT
+          (cd "$artifact_dir" && "$appimage" --appimage-extract >/dev/null)
+          app_dir="$artifact_dir/squashfs-root/usr/lib/wrzdj-bridge"
+          node ../scripts/test-bridge-app-package.cjs \
+            "$app_dir/wrzdj-bridge.real" "$app_dir/resources"
+          xvfb-run --auto-servernum node ../scripts/test-bridge-app-ui.cjs \
+            "$app_dir/wrzdj-bridge"
+
       - name: Security audit
-        run: npm audit --audit-level=high
-        continue-on-error: true
+        # Blocking: high/critical advisories fail unless .npm-audit-ignore.json
+        # lists them with a justification and an unexpired date.
+        run: node ../scripts/npm-audit-gate.cjs
 
   kiosk:
     name: Kiosk WiFi Portal Tests
@@ -203,12 +283,14 @@ jobs:
         working-directory: kiosk/wifi-portal
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.11"
+          python-version: "3.14"
 
       - name: Install test dependencies
         run: pip install pytest
@@ -223,34 +305,88 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # amd64-only, no push: verifies both images build on every PR/push without
       # paying for the multi-arch (arm64-under-QEMU) publish, which now runs only
       # on main/tag pushes in docker-publish.yml. The job NAME must stay exactly
       # "Docker Build Smoke Test" — main's branch protection requires that check.
       - name: Build backend image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ./server
           platforms: linux/amd64
           push: false
-          load: false
+          load: true
+          tags: wrzdj-api:smoke
           cache-from: type=gha,scope=ci-api
           cache-to: type=gha,mode=max,scope=ci-api
 
+      - name: Test locked API runtime
+        run: bash scripts/test-api-image.sh wrzdj-api:smoke
+
+      - name: Test PostgreSQL 16 to 18 upgrade path
+        run: bash scripts/test-postgres-upgrade.sh wrzdj-api:smoke
+
+      - name: Test PostgreSQL upgrade signal handling
+        run: bash scripts/test-postgres-upgrade-signals.sh
+
       - name: Build frontend image
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ./dashboard
           build-args: |
             NEXT_PUBLIC_API_URL=http://localhost:8000
           platforms: linux/amd64
           push: false
-          load: false
+          load: true
+          tags: wrzdj-web:smoke
           cache-from: type=gha,scope=ci-web
           cache-to: type=gha,mode=max,scope=ci-web
+
+      - name: Test standalone web runtime
+        run: bash scripts/test-web-image.sh wrzdj-web:smoke
+
+      - name: Build bridge image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ./bridge
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: wrzdj-bridge:smoke
+          cache-from: type=gha,scope=ci-bridge
+          cache-to: type=gha,mode=max,scope=ci-bridge
+
+      - name: Test bridge runtime
+        run: bash scripts/test-bridge-image.sh wrzdj-bridge:smoke
+
+      - name: Build development proxy image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ./deploy/dev-proxy
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: wrzdj-proxy:smoke
+          cache-from: type=gha,scope=ci-proxy
+          cache-to: type=gha,mode=max,scope=ci-proxy
+
+      - name: Test proxy readiness helper
+        run: timeout 120 bash scripts/test-wait-for-container-http.sh
+
+      - name: Test proxy readiness boundary
+        run: timeout 120 bash scripts/test-proxy-readiness-boundary.sh
+
+      - name: Test development proxy runtime
+        run: bash scripts/test-proxy-image.sh wrzdj-proxy:smoke
+
+      - name: Test production nginx provisioning
+        run: |
+          for test in deploy/tests/test_*.sh; do
+            bash "$test"
+          done

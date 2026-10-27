@@ -3,6 +3,7 @@
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Platforms">
   <img src="https://img.shields.io/coderabbit/prs/github/wrzonance/WrzDJ?utm_source=oss&utm_medium=github&utm_campaign=wrzonance%2FWrzDJ&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews" alt="CodeRabbit Reviews">
+  <a href="https://app.codspeed.io/wrzonance/WrzDJ?utm_source=badge"><img src="https://img.shields.io/endpoint?url=https://codspeed.io/badge.json" alt="CodSpeed"/></a>
 </p>
 
 # WrzDJ
@@ -237,7 +238,7 @@ graph TD
 
 - Docker + Docker Compose
 - Python 3.11+
-- Node.js 22+
+- Node.js 24.15+ on the 24.x LTS line, or Node.js 26+
 - [Tidal Developer Account](https://developer.tidal.com/) (for song search and album art enrichment)
 
 ### 1. Clone and configure
@@ -293,6 +294,9 @@ The bridge connects to DJ equipment and reports "Now Playing" data to the server
 
 **Desktop app (recommended):** Download from [Releases](https://github.com/thewrz/WrzDJ/releases) (Windows `.exe`, macOS `.dmg`, Linux `.AppImage`). Also available via `winget install WrzDJ.WrzDJ-Bridge` on Windows.
 
+The desktop app requires macOS 13 (Ventura) or later. Release builds support
+Windows/Linux x64 and macOS x64/arm64.
+
 **CLI bridge:**
 
 ```bash
@@ -322,11 +326,11 @@ Self-hosters can run pre-built multi-arch images from GitHub Container Registry 
 - `ghcr.io/wrzonance/wrzdj-api` — FastAPI backend
 - `ghcr.io/wrzonance/wrzdj-web` — Next.js frontend (the API URL is patched in at container start, so one image works for any domain)
 
-Tags: `latest` (main), `vX.Y.Z` / `X.Y` (release tags), `sha-<short>` (every commit).
+Tags: `stable` (newest release, the default), `vYYYY.MM.DD` (a pinned release), `latest` / `main` (HEAD of main, unreleased), `sha-<short>` (every commit).
 
 ```bash
 cd /opt && git clone https://github.com/thewrz/WrzDJ.git && cd WrzDJ
-cp deploy/.env.example deploy/.env   # set WRZDJ_VERSION (default: latest) and secrets
+cp deploy/.env.example deploy/.env   # set WRZDJ_VERSION (default: stable) and secrets
 ./deploy/deploy-ghcr.sh              # pulls images, restarts the stack, polls /health
 ```
 
@@ -349,7 +353,14 @@ docker compose -f deploy/docker-compose.yml up -d --build
 Set up nginx:
 ```bash
 APP_DOMAIN=app.yourdomain.com API_DOMAIN=api.yourdomain.com ./deploy/setup-nginx.sh
-sudo certbot --nginx -d app.yourdomain.com -d api.yourdomain.com
+# A fresh host starts with an HTTP bootstrap; obtain both certificate types,
+# then rerun setup-nginx.sh to install the HTTPS vhosts. Replace the email
+# address with the ACME account address used for this host.
+sudo certbot --nginx --agree-tos --email admin@yourdomain.com --cert-name app.yourdomain.com --key-type ecdsa -d app.yourdomain.com
+sudo certbot --nginx --agree-tos --email admin@yourdomain.com --cert-name api.yourdomain.com --key-type ecdsa -d api.yourdomain.com
+sudo certbot --nginx --agree-tos --email admin@yourdomain.com --cert-name app.yourdomain.com-rsa --key-type rsa -d app.yourdomain.com
+sudo certbot --nginx --agree-tos --email admin@yourdomain.com --cert-name api.yourdomain.com-rsa --key-type rsa -d api.yourdomain.com
+APP_DOMAIN=app.yourdomain.com API_DOMAIN=api.yourdomain.com ./deploy/setup-nginx.sh
 ```
 
 GoAccess analytics are available for production traffic — see `deploy/scripts/analytics.sh`.

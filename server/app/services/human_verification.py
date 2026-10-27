@@ -14,6 +14,7 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 from typing import TYPE_CHECKING
 
 from app.core.config import get_settings
@@ -21,6 +22,7 @@ from app.core.time import utcnow
 
 if TYPE_CHECKING:
     from fastapi import Request, Response
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +30,40 @@ COOKIE_NAME = "wrzdj_human"
 HUMAN_COOKIE_VERSION = 2  # Bump on any breaking schema or policy change.
 
 
+def record_human_verification(db: Session, guest_id: int) -> None:
+    """Stamp a Turnstile pass on the guest row (last pass time + running count).
+
+    Turnstile itself returns only pass/fail, so this is the whole "human"
+    signal the admin Guests page can show (#862). A missing row is a no-op:
+    the cookie is still issued, the stat is simply not recorded.
+
+    The increment is a single SQL UPDATE, not read-modify-write, so two
+    passes landing at once both count.
+    """
+    from app.models.guest import Guest
+
+    db.query(Guest).filter(Guest.id == guest_id).update(
+        {
+            Guest.human_verified_at: utcnow(),
+            Guest.human_verify_count: Guest.human_verify_count + 1,
+        },
+        synchronize_session=False,
+    )
+    db.commit()
+
+
 def _b64encode(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode().rstrip("=")
 
 
+# The exact alphabet _b64encode emits. Anything else is rejected rather than
+# dropped, so no altered cookie string decodes to the bytes of a real one (#856).
+_URLSAFE_B64 = re.compile(r"[A-Za-z0-9_-]*")
+
+
 def _b64decode(s: str) -> bytes:
+    if not _URLSAFE_B64.fullmatch(s):
+        raise binascii.Error("not unpadded URL-safe base64")
     pad = "=" * (-len(s) % 4)
     return base64.urlsafe_b64decode(s + pad)
 

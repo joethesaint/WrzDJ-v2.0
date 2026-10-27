@@ -1,14 +1,16 @@
 """Login lockout logic with escalating cooldowns.
 
 NOTE: LockoutManager uses an in-memory dict protected by threading.Lock.
-In a multi-worker deployment (e.g. gunicorn with multiple workers) each
-process holds its own independent lockout state, so an attacker can
-theoretically bypass lockouts by hitting different workers.  A shared
-store (Redis / DB) would be needed for strict cross-worker enforcement.
+In a multi-worker deployment each process would hold its own independent
+lockout state, so an attacker could bypass lockouts by hitting different
+workers. The API therefore runs as exactly one worker (pinned in
+``scripts/start.sh``); a shared store (Redis / DB) must replace this dict
+before that pin is raised. State is also lost on restart.
 """
 
 import time
 from dataclasses import dataclass
+from math import ceil
 from threading import Lock
 
 
@@ -43,18 +45,6 @@ class LockoutManager:
         self._lock = Lock()
         self._last_cleanup = time.time()
 
-    def _make_key(self, ip: str | None, username: str | None) -> str:
-        """Create a composite key from IP and username."""
-        # Track by both IP and username to prevent:
-        # - One IP trying many usernames
-        # - One username being tried from many IPs
-        parts = []
-        if ip:
-            parts.append(f"ip:{ip}")
-        if username:
-            parts.append(f"user:{username.lower()}")
-        return "|".join(parts) if parts else "unknown"
-
     def _cleanup_old_entries(self) -> None:
         """Remove expired lockout entries."""
         now = time.time()
@@ -65,8 +55,8 @@ class LockoutManager:
         expired_keys = []
         for key, attempt in self._attempts.items():
             # Remove if lockout expired and no recent failures
-            expired = attempt.lockout_until < now
-            old = (now - attempt.first_failure) > self.CLEANUP_INTERVAL
+            expired = attempt.lockout_until <= now
+            old = (now - attempt.first_failure) >= self.CLEANUP_INTERVAL
             if expired and old:
                 expired_keys.append(key)
 
@@ -82,7 +72,8 @@ class LockoutManager:
         with self._lock:
             self._cleanup_old_entries()
 
-            # Check both IP-based and username-based lockouts
+            # Keep independent keys: one IP trying many usernames and one username
+            # tried from many IPs must each reach their own lockout threshold.
             keys_to_check = []
             if ip:
                 keys_to_check.append(f"ip:{ip}")
@@ -95,7 +86,7 @@ class LockoutManager:
             for key in keys_to_check:
                 attempt = self._attempts.get(key)
                 if attempt and attempt.lockout_until > now:
-                    remaining = int(attempt.lockout_until - now)
+                    remaining = ceil(attempt.lockout_until - now)
                     max_remaining = max(max_remaining, remaining)
 
             return (max_remaining > 0, max_remaining)
@@ -107,6 +98,7 @@ class LockoutManager:
             Tuple of (is_now_locked, lockout_seconds)
         """
         with self._lock:
+            self._cleanup_old_entries()
             now = time.time()
             keys_to_update = []
             if ip:
@@ -125,13 +117,24 @@ class LockoutManager:
                     )
                 else:
                     attempt = self._attempts[key]
-                    # Reset if lockout has expired
-                    if attempt.lockout_until > 0 and attempt.lockout_until < now:
-                        attempt.count = 1
-                        attempt.first_failure = now
+                    # Cleanup is throttled globally, so expire stale keys here as well. An
+                    # active cooldown remains protected even when its first failure is old.
+                    if (
+                        attempt.lockout_until <= now
+                        and now - attempt.first_failure >= self.CLEANUP_INTERVAL
+                    ):
+                        self._attempts[key] = FailedAttempt(
+                            count=1,
+                            first_failure=now,
+                            lockout_until=0.0,
+                        )
+                        continue
+
+                    # Preserve the anchored observation-window count across cooldowns so
+                    # escalation remains reachable.
+                    if attempt.lockout_until > 0 and attempt.lockout_until <= now:
                         attempt.lockout_until = 0.0
-                    else:
-                        attempt.count += 1
+                    attempt.count += 1
 
                     # Check thresholds
                     if attempt.count >= self.THRESHOLD_2:

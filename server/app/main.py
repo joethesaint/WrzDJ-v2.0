@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import logging
 import mimetypes
 from contextlib import asynccontextmanager
@@ -122,18 +121,21 @@ async def lifespan(app: FastAPI, *, run_background_tasks: bool = True):
         from app.services.llm.health_monitor import health_monitor_loop
 
         tasks = [
-            asyncio.create_task(_tidal_collection_poll_loop()),
-            asyncio.create_task(_llm_call_log_cleanup_loop()),
-            asyncio.create_task(health_monitor_loop()),
+            asyncio.create_task(_tidal_collection_poll_loop(), name="tidal_collection_poll"),
+            asyncio.create_task(_llm_call_log_cleanup_loop(), name="llm_call_log_cleanup"),
+            asyncio.create_task(health_monitor_loop(), name="llm_health_monitor"),
         ]
     try:
         yield
     finally:
         for task in tasks:
             task.cancel()
-        for task in tasks:
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
+        # Cancelled children come back as CancelledError results. A task that had
+        # already died of its own exception is logged instead of aborting shutdown.
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for task, result in zip(tasks, results, strict=True):
+            if isinstance(result, Exception):
+                logger.error("Background task %s failed", task.get_name(), exc_info=result)
 
 
 @asynccontextmanager
@@ -165,12 +167,17 @@ def create_app(*, lifespan_context=lifespan) -> FastAPI:
     application.add_middleware(SecurityHeadersMiddleware)
 
     if settings.cors_origins.strip() == "*":
+        # Dev / LAN testing. allow_credentials lets the dashboard session cookie
+        # (#754) flow; Starlette echoes the request Origin instead of "*" when both
+        # are set, which is what browsers require. validate_settings refuses "*"
+        # in production, so this branch never runs there.
         application.add_middleware(
             CORSMiddleware,
             allow_origins=["*"],
-            allow_credentials=False,
+            allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
+            expose_headers=["Content-Disposition", "X-Export-Truncated"],
         )
     else:
         origins = [origin.strip() for origin in settings.cors_origins.split(",")]
@@ -179,8 +186,14 @@ def create_app(*, lifespan_context=lifespan) -> FastAPI:
             allow_origins=origins,
             allow_credentials=True,
             allow_methods=CORS_ALLOW_METHODS,
-            allow_headers=["Authorization", "Content-Type", "X-Kiosk-Session", "X-Pair-Nonce"],
-            expose_headers=["Content-Disposition"],
+            allow_headers=[
+                "Authorization",
+                "Content-Type",
+                "X-Kiosk-Session",
+                "X-Pair-Nonce",
+                "X-Requested-With",  # cookie-auth CSRF header (#754)
+            ],
+            expose_headers=["Content-Disposition", "X-Export-Truncated"],
         )
 
     application.include_router(api_router, prefix="/api")

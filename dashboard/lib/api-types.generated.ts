@@ -93,6 +93,58 @@ export interface paths {
         patch: operations["admin_update_event_api_admin_events__code__patch"];
         trace?: never;
     };
+    "/api/admin/guests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Admin List Guests */
+        get: operations["admin_list_guests_api_admin_guests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/guests/{guest_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Admin Delete Guest */
+        delete: operations["admin_delete_guest_api_admin_guests__guest_id__delete"];
+        options?: never;
+        head?: never;
+        /** Admin Update Guest */
+        patch: operations["admin_update_guest_api_admin_guests__guest_id__patch"];
+        trace?: never;
+    };
+    "/api/admin/guests/{guest_id}/events/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Admin Update Guest Profile */
+        patch: operations["admin_update_guest_profile_api_admin_guests__guest_id__events__event_id__patch"];
+        trace?: never;
+    };
     "/api/admin/integrations": {
         parameters: {
             query?: never;
@@ -475,6 +527,74 @@ export interface paths {
         patch: operations["admin_update_user_api_admin_users__user_id__patch"];
         trace?: never;
     };
+    "/api/apple-music/developer-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Developer Token */
+        get: operations["developer_token_api_apple_music_developer_token_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/apple-music/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disconnect Account */
+        post: operations["disconnect_account_api_apple_music_disconnect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/apple-music/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Link Account */
+        post: operations["link_account_api_apple_music_link_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/apple-music/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status For User */
+        get: operations["status_for_user_api_apple_music_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/email/confirm": {
         parameters: {
             query?: never;
@@ -521,7 +641,16 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Login */
+        /**
+         * Login
+         * @description Issue the DJ JWT.
+         *
+         *     The token is returned in the body for bearer clients (bridge-app). For the
+         *     dashboard (#754) it is ALSO set as an HttpOnly session cookie, but only when
+         *     the request carries the CSRF header: a cross-site form POST cannot add that
+         *     header, so it cannot plant a session cookie for an attacker's account in a
+         *     victim's browser (login CSRF).
+         */
         post: operations["login_api_auth_login_post"];
         delete?: never;
         options?: never;
@@ -635,6 +764,30 @@ export interface paths {
          */
         post: operations["register_api_auth_register_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * End Session
+         * @description Drop the dashboard session cookie without revoking bearer tokens (#754).
+         *
+         *     This is the dashboard's logout: it ends only this browser's session, so a
+         *     bridge-app signed in as the same DJ keeps working. Needs no authentication
+         *     because clearing your own cookie is harmless.
+         */
+        delete: operations["end_session_api_auth_session_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2543,6 +2696,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/setbuilder/collaborator-invites/{token}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Collaborator Invite
+         * @description Accept an invite with the recipient's active DJ account.
+         */
+        post: operations["accept_collaborator_invite_api_setbuilder_collaborator_invites__token__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/setbuilder/curve-templates": {
         parameters: {
             query?: never;
@@ -2787,6 +2960,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/setbuilder/sets/{set_id}/collaborator-invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Collaborator Invites
+         * @description List invitation status for an owned set without exposing invite tokens.
+         */
+        get: operations["list_collaborator_invites_api_setbuilder_sets__set_id__collaborator_invites_get"];
+        put?: never;
+        /**
+         * Create Collaborator Invite
+         * @description Create a single-use editor or viewer invitation for an owned set.
+         */
+        post: operations["create_collaborator_invite_api_setbuilder_sets__set_id__collaborator_invites_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/setbuilder/sets/{set_id}/collaborator-invites/{invite_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Collaborator Invite
+         * @description Revoke an unused invitation for an owned set.
+         */
+        delete: operations["revoke_collaborator_invite_api_setbuilder_sets__set_id__collaborator_invites__invite_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/setbuilder/sets/{set_id}/critique": {
         parameters: {
             query?: never;
@@ -2871,6 +3088,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/setbuilder/sets/{set_id}/export/apple-music": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Set Apple Music
+         * @description Create and verify one ordered Apple Music library playlist.
+         */
+        post: operations["export_set_apple_music_api_setbuilder_sets__set_id__export_apple_music_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/setbuilder/sets/{set_id}/export/apple-music/recovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconcile Apple Music Export
+         * @description Let the DJ reconcile an ambiguous export after checking their Apple library.
+         */
+        post: operations["reconcile_apple_music_export_api_setbuilder_sets__set_id__export_apple_music_recovery_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/setbuilder/sets/{set_id}/export/file": {
         parameters: {
             query?: never;
@@ -2905,6 +3162,26 @@ export interface paths {
          * @description Pre-export resolution check (tidal targets do live Tidal matching).
          */
         post: operations["export_preflight_api_setbuilder_sets__set_id__export_preflight_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/setbuilder/sets/{set_id}/export/spotify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Set Spotify
+         * @description Export the ordered setlist to a new private Spotify playlist.
+         */
+        post: operations["export_set_spotify_api_setbuilder_sets__set_id__export_spotify_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3507,6 +3784,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/spotify/auth/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Authorization Callback */
+        get: operations["authorization_callback_api_spotify_auth_callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/spotify/auth/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Authorization */
+        post: operations["start_authorization_api_spotify_auth_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/spotify/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disconnect Account */
+        post: operations["disconnect_account_api_spotify_disconnect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/spotify/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status For User */
+        get: operations["status_for_user_api_spotify_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tidal/auth/cancel": {
         parameters: {
             query?: never;
@@ -3894,6 +4239,97 @@ export interface components {
              */
             request_count: number;
         };
+        /**
+         * AdminGuestEventOut
+         * @description One event membership (a guest_profiles row) as the admin sees it.
+         */
+        AdminGuestEventOut: {
+            /** Code */
+            code: string;
+            /** Event Id */
+            event_id: number;
+            /**
+             * Joined At
+             * Format: date-time
+             */
+            joined_at: string;
+            /** Name */
+            name: string;
+            /** Nickname */
+            nickname: string | null;
+            /**
+             * Submission Count
+             * @default 0
+             */
+            submission_count: number;
+        };
+        /** AdminGuestOut */
+        AdminGuestOut: {
+            /** Browser */
+            browser: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Email Masked */
+            email_masked: string | null;
+            /**
+             * Email Verified
+             * @default false
+             */
+            email_verified: boolean;
+            /** Email Verified At */
+            email_verified_at: string | null;
+            /**
+             * Event Count
+             * @default 0
+             */
+            event_count: number;
+            /** Events */
+            events: components["schemas"]["AdminGuestEventOut"][];
+            /**
+             * Fingerprint Shared With
+             * @default 0
+             */
+            fingerprint_shared_with: number;
+            /** Fingerprint Short */
+            fingerprint_short: string | null;
+            /** Human Verified At */
+            human_verified_at: string | null;
+            /**
+             * Human Verify Count
+             * @default 0
+             */
+            human_verify_count: number;
+            /** Id */
+            id: number;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /** Nickname */
+            nickname: string | null;
+            /**
+             * Request Count
+             * @default 0
+             */
+            request_count: number;
+        };
+        /** AdminGuestProfileUpdate */
+        AdminGuestProfileUpdate: {
+            /** Nickname */
+            nickname?: string | null;
+        };
+        /** AdminGuestUpdate */
+        AdminGuestUpdate: {
+            /**
+             * Revoke Email
+             * @default false
+             */
+            revoke_email: boolean;
+        };
         /** AdminPolicyOut */
         AdminPolicyOut: {
             /** Llm Apikey Connectors Enabled */
@@ -4052,6 +4488,29 @@ export interface components {
             slots: components["schemas"]["SlotOut"][];
             /** Tool Calls */
             tool_calls: components["schemas"]["AppliedToolCallOut"][];
+        };
+        /** AppleMusicDeveloperTokenOut */
+        AppleMusicDeveloperTokenOut: {
+            /** Developer Token */
+            developer_token: string;
+            /** Expires At */
+            expires_at: number;
+        };
+        /** AppleMusicLinkIn */
+        AppleMusicLinkIn: {
+            /** Music User Token */
+            music_user_token: string;
+        };
+        /** AppleMusicStatusOut */
+        AppleMusicStatusOut: {
+            /** Configured */
+            configured: boolean;
+            /** Linked */
+            linked: boolean;
+            /** Requires Reauthorization */
+            requires_reauthorization: boolean;
+            /** Storefront */
+            storefront: string | null;
         };
         /**
          * AppliedToolCallOut
@@ -4461,6 +4920,63 @@ export interface components {
             current_password: string;
             /** New Password */
             new_password: string;
+        };
+        /** CollaboratorAccepted */
+        CollaboratorAccepted: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "editor" | "viewer";
+            /** Set Id */
+            set_id: number;
+        };
+        /** CollaboratorInviteCreate */
+        CollaboratorInviteCreate: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "editor" | "viewer";
+        };
+        /** CollaboratorInviteCreated */
+        CollaboratorInviteCreated: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "editor" | "viewer";
+            /** Token */
+            token: string;
+        };
+        /** CollaboratorInviteOut */
+        CollaboratorInviteOut: {
+            /** Accepted */
+            accepted: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Id */
+            id: number;
+            /** Revoked */
+            revoked: boolean;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "editor" | "viewer";
         };
         /** CollectEventPreview */
         CollectEventPreview: {
@@ -5137,6 +5653,65 @@ export interface components {
             name?: string | null;
         };
         /**
+         * ExportAppleMusicIn
+         * @description Apple Music export requires an explicit choice before skipping unresolved tracks.
+         */
+        ExportAppleMusicIn: {
+            /**
+             * Skip Unresolved
+             * @default false
+             */
+            skip_unresolved: boolean;
+        };
+        /**
+         * ExportAppleMusicOut
+         * @description A playlist confirmed by read-back from the Apple Music library.
+         */
+        ExportAppleMusicOut: {
+            /** Added */
+            added: number;
+            /**
+             * Exported At
+             * Format: date-time
+             */
+            exported_at: string;
+            /** Playlist Id */
+            playlist_id: string;
+            /** Playlist Url */
+            playlist_url: string | null;
+            /** Skipped */
+            skipped: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "locked" | "exported";
+        };
+        /**
+         * ExportAppleMusicRecoveryIn
+         * @description Require the DJ to explicitly reconcile an export Apple did not confirm.
+         */
+        ExportAppleMusicRecoveryIn: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "playlist_found" | "playlist_absent";
+            /** Playlist Id */
+            playlist_id?: string | null;
+        };
+        /**
+         * ExportAppleMusicRecoveryOut
+         * @description Result of the DJ's explicit Apple Music reconciliation.
+         */
+        ExportAppleMusicRecoveryOut: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "exported" | "ready_to_retry";
+        };
+        /**
          * ExportFileIn
          * @description Body for the file (Rekordbox XML / M3U / txt) export.
          */
@@ -5161,13 +5736,15 @@ export interface components {
              * Target
              * @enum {string}
              */
-            target: "tidal" | "rekordbox" | "m3u" | "txt" | "enginedj" | "lexicon";
+            target: "tidal" | "spotify" | "apple_music" | "rekordbox" | "m3u" | "txt" | "enginedj" | "lexicon";
         };
         /**
          * ExportPreflightOut
          * @description Resolution summary the DJ confirms before exporting.
          */
         ExportPreflightOut: {
+            /** Apple Music Connected */
+            apple_music_connected: boolean | null;
             /** Resolved Count */
             resolved_count: number;
             /**
@@ -5175,17 +5752,54 @@ export interface components {
              * @enum {string}
              */
             source: "timeline" | "pool";
+            /** Spotify Connected */
+            spotify_connected: boolean | null;
             /**
              * Target
              * @enum {string}
              */
-            target: "tidal" | "rekordbox" | "m3u" | "txt" | "enginedj" | "lexicon";
+            target: "tidal" | "spotify" | "apple_music" | "rekordbox" | "m3u" | "txt" | "enginedj" | "lexicon";
             /** Tidal Connected */
             tidal_connected: boolean | null;
             /** Total */
             total: number;
             /** Unresolved */
             unresolved: components["schemas"]["UnresolvedTrackOut"][];
+        };
+        /**
+         * ExportSpotifyIn
+         * @description Body for Spotify export; skip_unresolved requires explicit DJ choice.
+         */
+        ExportSpotifyIn: {
+            /**
+             * Skip Unresolved
+             * @default false
+             */
+            skip_unresolved: boolean;
+        };
+        /**
+         * ExportSpotifyOut
+         * @description Successful Spotify playlist export.
+         */
+        ExportSpotifyOut: {
+            /** Added */
+            added: number;
+            /**
+             * Exported At
+             * Format: date-time
+             */
+            exported_at: string;
+            /** Playlist Id */
+            playlist_id: string;
+            /** Playlist Url */
+            playlist_url: string;
+            /** Skipped */
+            skipped: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "locked" | "exported";
         };
         /**
          * ExportTidalIn
@@ -6563,6 +7177,15 @@ export interface components {
          * @description Full set record (Phase 0: no slot/curve expansion yet).
          */
         SetDetail: {
+            /** Apple Music Export Recovery Playlist Id */
+            apple_music_export_recovery_playlist_id: string | null;
+            /**
+             * Apple Music Export Uncertain
+             * @default false
+             */
+            apple_music_export_uncertain: boolean;
+            /** Apple Music Playlist Id */
+            apple_music_playlist_id: string | null;
             /** Avg Transition Overlap Sec */
             avg_transition_overlap_sec: number;
             /** Bpm Ceiling */
@@ -6591,6 +7214,8 @@ export interface components {
              * @enum {string}
              */
             sharing_mode: "private" | "invite_only";
+            /** Spotify Playlist Id */
+            spotify_playlist_id: string | null;
             /**
              * Status
              * @enum {string}
@@ -7039,6 +7664,20 @@ export interface components {
          * @enum {string}
          */
         SortDirection: "asc" | "desc";
+        /** SpotifyAuthorizationOut */
+        SpotifyAuthorizationOut: {
+            /** Authorization Url */
+            authorization_url: string;
+        };
+        /** SpotifyStatusOut */
+        SpotifyStatusOut: {
+            /** Configured */
+            configured: boolean;
+            /** Expires At */
+            expires_at: string | null;
+            /** Linked */
+            linked: boolean;
+        };
         /** StatusMessageResponse */
         StatusMessageResponse: {
             /** Message */
@@ -7434,7 +8073,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "no_tidal_match" | "missing_metadata";
+            reason: "no_tidal_match" | "no_spotify_match" | "no_apple_music_match" | "missing_metadata";
             /** Title */
             title: string;
             /** Track Id */
@@ -7828,6 +8467,140 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminEventOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_list_guests_api_admin_guests_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                limit?: number;
+                filter?: string;
+                q?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_delete_guest_api_admin_guests__guest_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                guest_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_update_guest_api_admin_guests__guest_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                guest_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminGuestUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminGuestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    admin_update_guest_profile_api_admin_guests__guest_id__events__event_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                guest_id: number;
+                event_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminGuestProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminGuestOut"];
                 };
             };
             /** @description Validation Error */
@@ -8538,6 +9311,101 @@ export interface operations {
             };
         };
     };
+    developer_token_api_apple_music_developer_token_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppleMusicDeveloperTokenOut"];
+                };
+            };
+        };
+    };
+    disconnect_account_api_apple_music_disconnect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+        };
+    };
+    link_account_api_apple_music_link_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppleMusicLinkIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppleMusicStatusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    status_for_user_api_apple_music_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppleMusicStatusOut"];
+                };
+            };
+        };
+    };
     confirm_email_change_api_auth_email_confirm_get: {
         parameters: {
             query: {
@@ -8803,6 +9671,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    end_session_api_auth_session_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusMessageResponse"];
                 };
             };
         };
@@ -9798,13 +10686,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description CSV download; the header reports whether rows were omitted. */
             200: {
                 headers: {
+                    /** @description Whether additional rows were omitted after the export limit. */
+                    "X-Export-Truncated"?: "true" | "false";
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "text/csv": string;
                 };
             };
             /** @description Validation Error */
@@ -9829,13 +10719,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description CSV download; the header reports whether rows were omitted. */
             200: {
                 headers: {
+                    /** @description Whether additional rows were omitted after the export limit. */
+                    "X-Export-Truncated"?: "true" | "false";
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "text/csv": string;
                 };
             };
             /** @description Validation Error */
@@ -12046,6 +12938,37 @@ export interface operations {
             };
         };
     };
+    accept_collaborator_invite_api_setbuilder_collaborator_invites__token__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollaboratorAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_curve_templates_api_setbuilder_curve_templates_get: {
         parameters: {
             query?: never;
@@ -12530,6 +13453,102 @@ export interface operations {
             };
         };
     };
+    list_collaborator_invites_api_setbuilder_sets__set_id__collaborator_invites_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollaboratorInviteOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_collaborator_invite_api_setbuilder_sets__set_id__collaborator_invites_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollaboratorInviteCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollaboratorInviteCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_collaborator_invite_api_setbuilder_sets__set_id__collaborator_invites__invite_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+                invite_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     critique_set_api_setbuilder_sets__set_id__critique_post: {
         parameters: {
             query?: never;
@@ -12714,6 +13733,106 @@ export interface operations {
             };
         };
     };
+    export_set_apple_music_api_setbuilder_sets__set_id__export_apple_music_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportAppleMusicIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportAppleMusicOut"];
+                };
+            };
+            /** @description Apple Music account not connected, or no exportable tracks. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unresolved tracks require confirmation, or another export is in progress. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnresolvedTracksError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Apple Music export failed or its outcome is uncertain. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Apple Music is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reconcile_apple_music_export_api_setbuilder_sets__set_id__export_apple_music_recovery_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportAppleMusicRecoveryIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportAppleMusicRecoveryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     export_set_file_api_setbuilder_sets__set_id__export_file_post: {
         parameters: {
             query?: never;
@@ -12799,6 +13918,78 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Apple Music catalog lookup failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Apple Music is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    export_set_spotify_api_setbuilder_sets__set_id__export_spotify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportSpotifyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportSpotifyOut"];
+                };
+            };
+            /** @description Spotify account not connected, or no exportable tracks. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unresolved tracks — retry with skip_unresolved=true to proceed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnresolvedTracksError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Upstream Spotify export failed. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -13938,6 +15129,103 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TasteProfileOut"];
+                };
+            };
+        };
+    };
+    authorization_callback_api_spotify_auth_callback_get: {
+        parameters: {
+            query: {
+                state: string;
+                code?: string | null;
+                error?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                wrzdj_spotify_oauth_state?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_authorization_api_spotify_auth_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpotifyAuthorizationOut"];
+                };
+            };
+        };
+    };
+    disconnect_account_api_spotify_disconnect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+        };
+    };
+    status_for_user_api_spotify_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpotifyStatusOut"];
                 };
             };
         };

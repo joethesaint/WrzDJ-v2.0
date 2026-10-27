@@ -51,9 +51,17 @@ export type TidalSyncResult = Schemas['TidalSyncResult'];
 export type BeatportStatus = Schemas['BeatportStatus'];
 export type BeatportSearchResult = Schemas['BeatportSearchResult'];
 export type BeatportEventSettings = Schemas['BeatportEventSettings'];
+export type AppleMusicStatus = Schemas['AppleMusicStatusOut'];
+export type AppleMusicDeveloperToken = Schemas['AppleMusicDeveloperTokenOut'];
 export type SystemStats = Schemas['SystemStats'];
 export type AdminUser = Schemas['AdminUserOut'];
 export type AdminEvent = Schemas['AdminEventOut'];
+// Admin guest management (#862)
+export type AdminGuest = Schemas['AdminGuestOut'];
+export type AdminGuestEvent = Schemas['AdminGuestEventOut'];
+export type AdminGuestUpdate = Schemas['AdminGuestUpdate'];
+export type AdminGuestProfileUpdate = Schemas['AdminGuestProfileUpdate'];
+export type AdminGuestFilter = 'all' | 'verified' | 'unverified' | 'shared';
 export type SystemSettings = Schemas['SystemSettingsOut'];
 export type AIModelInfo = Schemas['AIModelInfo'];
 export type AIModelsResponse = Schemas['AIModelsResponse'];
@@ -193,6 +201,30 @@ export interface SetSummary {
   updated_at: string;
 }
 
+export interface CollaboratorInviteCreate {
+  role: 'editor' | 'viewer';
+}
+
+export interface CollaboratorInviteCreated {
+  token: string;
+  role: 'editor' | 'viewer';
+  expires_at: string;
+}
+
+export interface CollaboratorInvite {
+  id: number;
+  role: 'editor' | 'viewer';
+  created_at: string;
+  expires_at: string;
+  accepted: boolean;
+  revoked: boolean;
+}
+
+export interface CollaboratorAccepted {
+  set_id: number;
+  role: 'editor' | 'viewer';
+}
+
 export interface SetDetail extends SetSummary {
   vibe_theme: string | null;
   target_duration_sec: number | null;
@@ -201,6 +233,10 @@ export interface SetDetail extends SetSummary {
   bpm_ceiling: number | null;
   key_strictness: number;
   tidal_playlist_id: string | null;
+  spotify_playlist_id: string | null;
+  apple_music_playlist_id: string | null;
+  apple_music_export_uncertain: boolean;
+  apple_music_export_recovery_playlist_id: string | null;
   exported_at: string | null;
 }
 
@@ -323,3 +359,7 @@ export type ExportFileFormat = Schemas['ExportFileIn']['format'];
 export type UnresolvedTrack = Schemas['UnresolvedTrackOut'];
 export type ExportPreflight = Schemas['ExportPreflightOut'];
 export type ExportTidalResult = Schemas['ExportTidalOut'];
+export type ExportSpotifyResult = Schemas['ExportSpotifyOut'];
+export type ExportAppleMusicResult = Schemas['ExportAppleMusicOut'];
+export type ExportAppleMusicRecoveryRequest = Schemas['ExportAppleMusicRecoveryIn'];
+export type ExportAppleMusicRecoveryResult = Schemas['ExportAppleMusicRecoveryOut'];
