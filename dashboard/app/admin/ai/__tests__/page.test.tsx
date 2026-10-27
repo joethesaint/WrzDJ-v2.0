@@ -1,3 +1,4 @@
+import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import AdminAISettingsPage from '../page';
@@ -19,6 +20,10 @@ vi.mock('@/lib/auth', () => ({
     role: 'admin',
     logout: vi.fn(),
   }),
+}));
+
+vi.mock('@/components/PageControls', () => ({
+  PageControls: ({ children }: { children?: React.ReactNode }) => <div data-testid="page-controls">{children}</div>,
 }));
 
 vi.mock('@/lib/help/HelpContext', () => ({
@@ -154,6 +159,7 @@ describe('AdminAISettingsPage', () => {
     await waitFor(() => {
       expect(screen.getByText('AI / LLM Settings')).toBeInTheDocument();
     });
+    expect(screen.getByTestId('page-controls')).toBeInTheDocument();
 
     // Legacy env-var key panel and model selector are gone.
     expect(screen.queryByText('API Key Status')).not.toBeInTheDocument();
