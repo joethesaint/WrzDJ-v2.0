@@ -113,3 +113,29 @@ def test_identify_response_includes_action_create_then_cookie_hit(client):
     assert second.status_code == 200
     assert second.json().get("action") == "cookie_hit"
     assert second.json().get("guest_id") == body["guest_id"]
+
+
+def _guest_cookie_max_age(resp) -> int:
+    """Max-Age of the wrzdj_guest Set-Cookie header in a response."""
+    (header,) = [h for h in resp.headers.get_list("set-cookie") if h.startswith("wrzdj_guest=")]
+    attrs = dict(part.strip().split("=", 1) for part in header.split(";")[1:] if "=" in part)
+    return int(attrs["Max-Age"])
+
+
+def test_identify_cookie_max_age_defaults_to_24_hours(client: TestClient):
+    resp = client.post(
+        "/api/public/guest/identify",
+        json={"fingerprint_hash": "test_fp_max_age_default"},
+    )
+    assert _guest_cookie_max_age(resp) == 24 * 60 * 60
+
+
+def test_identify_cookie_max_age_follows_setting(client: TestClient, monkeypatch):
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "guest_cookie_max_age_seconds", 12 * 60 * 60)
+    resp = client.post(
+        "/api/public/guest/identify",
+        json={"fingerprint_hash": "test_fp_max_age_setting"},
+    )
+    assert _guest_cookie_max_age(resp) == 12 * 60 * 60

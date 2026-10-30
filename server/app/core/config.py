@@ -115,6 +115,9 @@ class Settings(BaseSettings):
     #   python -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"  # noqa: E501
     human_cookie_secret: str = ""
     human_cookie_ttl_seconds: int = 3600  # 60 min sliding window
+    # Lifetime of the wrzdj_guest identity cookie. 24h covers one event night;
+    # returning guests are re-linked by email verification or fingerprint reconciliation.
+    guest_cookie_max_age_seconds: int = 86400
 
     # DEV-ONLY: bypass the guest human-verification + email-verification gates so
     # headless tests (API/Playwright) can exercise guest flows without minting a

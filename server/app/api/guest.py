@@ -69,7 +69,7 @@ def identify(
             httponly=True,
             secure=is_prod,
             samesite="lax",
-            max_age=31536000,
+            max_age=settings.guest_cookie_max_age_seconds,
             path="/api/",
         )
 
