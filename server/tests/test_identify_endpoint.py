@@ -139,3 +139,22 @@ def test_identify_cookie_max_age_follows_setting(client: TestClient, monkeypatch
         json={"fingerprint_hash": "test_fp_max_age_setting"},
     )
     assert _guest_cookie_max_age(resp) == 12 * 60 * 60
+
+
+def test_identify_cookie_hit_renews_the_same_cookie(client: TestClient):
+    """A returning guest's cookie is re-set with a fresh Max-Age, so the window slides."""
+    first = client.post(
+        "/api/public/guest/identify",
+        json={"fingerprint_hash": "test_fp_renew"},
+    )
+    token = first.cookies["wrzdj_guest"]
+
+    client.cookies.set("wrzdj_guest", token)
+    second = client.post(
+        "/api/public/guest/identify",
+        json={"fingerprint_hash": "test_fp_renew"},
+    )
+
+    assert second.json()["action"] == "cookie_hit"
+    assert second.cookies["wrzdj_guest"] == token
+    assert _guest_cookie_max_age(second) == 24 * 60 * 60
