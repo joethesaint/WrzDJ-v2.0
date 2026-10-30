@@ -33,6 +33,7 @@ const { mockApi, MockApiError, MockHumanVerificationRequiredError, nicknameGateR
     search: vi.fn(),
     getJoinConfig: vi.fn(),
     ensureGuestName: vi.fn(),
+    submitVibeVote: vi.fn(),
   };
 
   // Tracks every NicknameGate mock render so tests can assert it never even
@@ -62,6 +63,10 @@ vi.mock('@/components/EmailRecoveryButton', () => ({
 
 vi.mock('@/components/EmailRecoveryModal', () => ({
   default: () => null,
+}));
+
+vi.mock('bot-avatars', () => ({
+  BotAvatar: ({ state }: { state: string }) => <span data-testid="bot-avatar" data-state={state} />,
 }));
 
 vi.mock('@/lib/use-event-stream', () => ({
@@ -302,6 +307,39 @@ describe('JoinEventPage — request list view', () => {
       expect(screen.getByText('Now Playing')).toBeInTheDocument();
       expect(screen.getByText('Playing Song')).toBeInTheDocument();
     });
+  });
+
+  it('casts a vibe vote and shows the returned score', async () => {
+    mockApi.getPublicRequests.mockResolvedValue({
+      requests: [],
+      now_playing: { title: 'Playing Song', artist: 'Playing Artist', album_art_url: null },
+    });
+    mockApi.submitVibeVote.mockResolvedValue({ status: 'recorded', vibe_score: 100, vote_count: 1 });
+    render(<JoinEventPage />);
+
+    const fire = await screen.findByRole('button', { name: /Fire \(5 of 5\)/ });
+    fireEvent.click(fire);
+
+    await waitFor(() => {
+      expect(mockApi.submitVibeVote).toHaveBeenCalledWith('TEST01', 5);
+      expect(screen.getByTestId('vibe-score')).toHaveTextContent('100% ENERGY');
+      expect(screen.getByTestId('vibe-mascot')).toHaveAttribute('data-state', 'working');
+    });
+    // Cooldown: the buttons lock until it ends.
+    expect(fire).toBeDisabled();
+  });
+
+  it('tells the guest when no song is playing for a vibe vote', async () => {
+    mockApi.getPublicRequests.mockResolvedValue({
+      requests: [],
+      now_playing: { title: 'Playing Song', artist: 'Playing Artist', album_art_url: null },
+    });
+    mockApi.submitVibeVote.mockRejectedValue(new MockApiError('no song', 409));
+    render(<JoinEventPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Good \(3 of 5\)/ }));
+
+    expect(await screen.findByText('Voting opens when the next song starts')).toBeInTheDocument();
   });
 
   it('shows now playing with artwork when album_art_url is provided', async () => {

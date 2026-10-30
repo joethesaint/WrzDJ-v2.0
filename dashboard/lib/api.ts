@@ -58,6 +58,7 @@ import type {
   CurveTemplatesResponse,
   LLMRecommendationResponse,
   MyRequestsResponse,
+  VibeVoteResponse,
   NowPlayingInfo,
   PaginatedResponse,
   Pairing,
@@ -186,6 +187,7 @@ export type {
   LLMRecommendationResponse,
   MyRequestInfo,
   MyRequestsResponse,
+  VibeVoteResponse,
   NowPlayingInfo,
   PaginatedResponse,
   Pairing,
@@ -1429,6 +1431,18 @@ class ApiClient {
       credentials: 'include',
     });
     if (!res.ok) throw new ApiError(`getMyRequests failed: ${res.status}`, res.status);
+    return res.json();
+  }
+
+  /** Cast a guest Vibe Meter vote (1..5). A 429 means the guest is in cooldown. */
+  async submitVibeVote(code: string, score: number): Promise<VibeVoteResponse> {
+    const res = await fetch(`${getApiUrl()}/api/public/events/${code}/vibe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ score }),
+    });
+    if (!res.ok) throw new ApiError(`submitVibeVote failed: ${res.status}`, res.status);
     return res.json();
   }
 
