@@ -606,7 +606,9 @@ export default function JoinEventPage() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 5 }}>
-            <StatPill label="QUEUE" value={String(total || guestRequests.length)} accent="#fff" sub={subFg} border={border} />
+            {/* Songs still waiting or accepted (the server's total). "My Requests" below also lists the
+                guest's played and declined songs, so the label says what this number counts. */}
+            <StatPill label="IN QUEUE" value={String(total)} accent="#fff" sub={subFg} border={border} />
           </div>
         </div>
 

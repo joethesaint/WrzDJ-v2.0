@@ -280,6 +280,34 @@ describe('JoinEventPage — request list view', () => {
     expect(screen.getByText('Artist One')).toBeInTheDocument();
   });
 
+  it('header counts the queue from the server total, not the songs on screen', async () => {
+    mockApi.getPublicRequests.mockResolvedValue({
+      requests: [
+        { id: 1, title: 'Song One', artist: 'Artist One', status: 'new', vote_count: 0, artwork_url: null, nickname: 'TestUser' },
+      ],
+      now_playing: null,
+      total: 40,
+    });
+    render(<JoinEventPage />);
+    await waitFor(() => {
+      expect(screen.getByText('Song One')).toBeInTheDocument();
+    });
+    expect(screen.getByText('IN QUEUE').previousSibling).toHaveTextContent('40');
+  });
+
+  it('header shows 0 in queue while My Requests lists a played song', async () => {
+    mockApi.getPublicRequests.mockResolvedValue({ requests: [], now_playing: null, total: 0 });
+    mockApi.getMyRequests.mockResolvedValue({
+      requests: [{ id: 7, title: 'Done Song', artist: 'Done Artist', status: 'played', artwork_url: null }],
+    });
+    render(<JoinEventPage />);
+    await waitFor(() => {
+      expect(screen.getByText('My Requests (1)')).toBeInTheDocument();
+    });
+    expect(screen.getByText('IN QUEUE').previousSibling).toHaveTextContent('0');
+    expect(screen.getByText('Played')).toBeInTheDocument();
+  });
+
   it('shows "No requests yet" empty state when request list is empty', async () => {
     mockApi.getPublicRequests.mockResolvedValue({ requests: [], now_playing: null });
     render(<JoinEventPage />);
