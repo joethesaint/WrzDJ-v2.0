@@ -96,3 +96,6 @@ deploy/backups/
 
 # Production host: last commit fully deployed by deploy/ci-deploy.sh
 deploy/.ci-last-deployed
+
+# Rust Bridge core build output
+bridge-core/target/
