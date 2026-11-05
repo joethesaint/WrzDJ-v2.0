@@ -167,6 +167,14 @@ impl DeckStateManager {
     pub fn decks(&self) -> &[Deck] {
         &self.decks
     }
+    /// When the next timer fires, if any (for a caller that sleeps until then).
+    pub fn next_due(&self) -> Option<u64> {
+        self.scheduled.iter().map(|t| t.due).min()
+    }
+    /// The track on a deck, if it has one.
+    pub fn track_on(&self, deck: &str) -> Option<&Track> {
+        self.idx(deck).and_then(|i| self.decks[i].track.as_ref())
+    }
     pub fn take_outputs(&mut self) -> Vec<Output> {
         std::mem::take(&mut self.out)
     }

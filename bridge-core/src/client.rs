@@ -227,6 +227,23 @@ impl<I: Io> Client<I> {
         self.post_with_retry("/api/bridge/status", &payload)
     }
 
+    /// `postBridgeStatus` with index.ts's `buildEnrichedStatus()`: breaker, buffer, uptime, decks.
+    pub fn post_status_enriched(
+        &mut self,
+        connected: bool,
+        device: Option<&str>,
+        plugin_id: &str,
+        deck_count: usize,
+        uptime_s: u64,
+    ) -> bool {
+        let payload = json!({
+            "event_code": self.cfg.event_code, "connected": connected, "device_name": device,
+            "circuit_breaker_state": self.breaker.state.name(), "buffer_size": self.buffer.len(),
+            "plugin_id": plugin_id, "deck_count": deck_count, "uptime_seconds": uptime_s,
+        });
+        self.post_with_retry("/api/bridge/status", &payload)
+    }
+
     /// `clearNowPlaying`: no breaker, 3 tries.
     pub fn clear_now_playing(&mut self) {
         let path = format!("/api/bridge/nowplaying/{}", self.cfg.event_code);

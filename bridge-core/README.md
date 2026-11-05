@@ -70,8 +70,41 @@ moves the old one to history; clear empties it; a wrong key gives up after 4 tri
 already taken from the buffer. The port does the same so the two can be compared; fixing it is a
 separate change to both.
 
+## Piece 3: Traktor broadcast and a running Bridge
+
+`src/traktor.rs` ports `bridge/src/plugins/traktor-broadcast-plugin.ts`: the ICY reader
+(`icy-metaint` blocks), header-mode metadata, `StreamTitle` parsing with JavaScript's matching and
+trimming rules, and the repeat filter, plus a TCP listener on `127.0.0.1:8123`. Unlike the Node
+server, the listener also reads a body sent with no length (an Icecast `SOURCE` client).
+
+`src/bin/wrzdj-bridge.rs` is `bridge/src/index.ts` for Traktor: same environment variables, plus
+`WRZDJ_TRAKTOR_PORT`. One loop runs the deck state machine, sleeping until its next timer or the
+120 s heartbeat; one worker thread owns the server client, so a slow server never delays deck
+timing. Not ported yet: the command poller, and the clear on Ctrl+C.
+
+**Proof it matches.** `tests/traktor_differential.rs` generates streams (random audio bytes;
+titles with accents, emoji, invalid UTF-8, a byte-order mark, NUL padding, extra quotes, line
+breaks; bare text; empty blocks), cuts them into chunks at random points, and feeds the same
+chunks to the TypeScript plugin's readers (`bridge/scripts/traktor-trace.ts`) and to the port.
+20,000 streams, 72,627 tracks: identical. Removing U+FEFF from the trim set is caught.
+
+**Side by side.** Both Bridges ran against a local server, each fed by a simulated Traktor (chunked
+`PUT`, `icy-metaint` 8192, 128 kbps, a new track every 25 s) for 4 minutes, sampled every 5 s.
+The Node Bridge ran as compiled JavaScript (`tsc`, then `node dist/index.js`), not through `tsx`.
+
+| | Node (`node dist/index.js`) | Rust (`wrzdj-bridge`, release) |
+|---|---|---|
+| Tracks taken live | 10 of 10 | 10 of 10 |
+| Server afterwards | 9 in history, song 10 playing | the same |
+| Memory (RSS) | 89.6-93.0 MB | 3.0-3.8 MB |
+| CPU over 4 min | 0.54 s (0.22% of one core) | 0.04 s (0.02% of one core) |
+| Program | Node.js runtime + `dist/` + `node_modules` | 2.3 MB binary |
+
+Measured on Linux in a cloud container. The Electron app adds Chromium on top of the Node
+figure; on a DJ's Windows laptop next to Serato, measure again.
+
 ## Next pieces
 
-1. One equipment plugin (Traktor broadcast), giving a working headless Bridge, and the first
-   memory comparison of a long-running process.
-2. The remaining plugins, then the app shell.
+1. The command poller and a clean shutdown, so the Rust Bridge does everything the Node one does
+   for Traktor.
+2. The other plugins (StageLinQ, Pro DJ Link, Serato), then the app shell.
