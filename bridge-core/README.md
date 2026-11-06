@@ -4,6 +4,63 @@ The Bridge's core in Rust, ported from `bridge/` one piece at a time. Each piece
 exactly like the TypeScript it replaces before anything uses it. The Electron app stays the
 default until the Rust version matches it.
 
+## Where it stands (2026-11-06)
+
+Built on this branch, and checked on Windows, macOS and Linux by
+[`.github/workflows/bridge-core.yml`](../.github/workflows/bridge-core.yml).
+
+### Traced: proven to behave like the TypeScript
+
+Each line is a differential test: generated inputs go through the TypeScript and the Rust, and the outputs must be
+identical. A deliberately broken copy of the Rust must fail it.
+
+| Piece | TypeScript it traces | Proof |
+|---|---|---|
+| Deck state (which deck is live) | `deck-state-manager.ts` | `tests/differential.rs`: 20,000 traces, 1,013,386 events identical; with reset: 20,000 traces, 44,135 live/clear outputs |
+| Server client (retries, breaker, replay buffer, debounce) | `bridge.ts`, `circuit-breaker.ts` | `tests/client_differential.rs`: 5,000 traces, 135,347 requests identical |
+| Traktor broadcast | `traktor-broadcast-plugin.ts` | `tests/traktor_differential.rs`: 20,000 streams, 72,627 tracks identical |
+| Serato session file | `serato-plugin.ts`, `serato-session-parser.ts` | `tests/serato_differential.rs`: 3,000 sessions, 11,494 tracks identical |
+| Command poller, reset / reconnect / restart | `command-poller.ts`, `index.ts` | unit tests; end-to-end against a server queuing all 5 commands |
+| Desktop-app services: sign-in, API key, events, event health, log file, subnet warning, settings | `bridge-app/src/main/*-service.ts`, `log-file-writer.ts`, `network-check.ts`, `store.ts` | ported test for test; HTTP tests against a real local server |
+
+### Improved: better than the TypeScript
+
+| Area | TypeScript today | Rust |
+|---|---|---|
+| Memory | 87-93 MB | 3.0-3.9 MB (Traktor, Serato side by side) |
+| CPU | 0.54 s per 4 min (Traktor) | 0.04 s |
+| Size | Node.js + `node_modules`; 180 MB installer | one program, 2.5 MB (Windows) |
+| Replay after downtime | a failed replay drops the rest of the buffer ([#961](https://github.com/wrzonance/WrzDJ/issues/961)) | unsent tracks go back to the front, in order |
+| Clear on shutdown | two DELETEs at once; the song archived twice ([#963](https://github.com/wrzonance/WrzDJ/issues/963)) | one DELETE |
+| Errors | console and `bridge.log`; a failed event health check passes silently | `errors.log` + `errors.jsonl` with a run id; every failure logged under `<area>:<detail>`; panics on any thread recorded; failed health checks logged |
+| Traktor input | `Content-Length` bodies only | also chunked bodies and Icecast `SOURCE` with no length |
+| Server replies | a malformed reply becomes `undefined` | refused with a clear error (missing API key, malformed event list) |
+| Settings | an update is stored without checking its types | a bad update is refused; a missing or corrupt file gives the defaults; atomic saves; reads the desktop app's `config.json` |
+| Token storage | OS safeStorage | OS keychain, real round trip tested on Windows and Linux; a refusal falls back to memory and is logged |
+
+The two bug fixes are also proposed for the TypeScript: [#962](https://github.com/wrzonance/WrzDJ/pull/962),
+[#964](https://github.com/wrzonance/WrzDJ/pull/964).
+
+### Different on purpose
+
+- Serato: the newest session file is looked up on each poll instead of with `fs.watch`.
+- Serato: a lone UTF-16 surrogate decodes to U+FFFD.
+- Traktor: the listener stays bound on a restart (the title filter resets); the TypeScript closes and rebinds.
+
+### Open
+
+- When the newest Serato session file is deleted, the Rust falls back to the older one and re-reads its tracks.
+  Whether the TypeScript does the same is not compared yet.
+
+### Not built yet
+
+| Piece | Status |
+|---|---|
+| Scenario harness (scripted nights through both Bridges, recordings compared) | in progress |
+| StageLinQ (Denon) | not started: protocol map, simulator, then port |
+| Pro DJ Link (Pioneer) | not started: protocol map, simulator, then port |
+| Window, screens and installer | not started |
+
 ## Piece 1: the deck state machine
 
 `src/deck.rs` ports `bridge/src/deck-state-manager.ts`, which decides which deck is live and
@@ -161,5 +218,5 @@ doesn't yet (next piece).
 
 ## Next pieces
 
-1. A scenario harness that drives both Bridges and compares what the server got.
+1. The scenario harness: scripted nights drive both Bridges against a recording server, and the recordings must match.
 2. StageLinQ and Pro DJ Link, each with a simulator; then the app shell.
