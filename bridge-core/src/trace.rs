@@ -64,6 +64,7 @@ pub fn run(trace: &Trace) -> Value {
                 e.title.clone().map(|title| Track {
                     title,
                     artist: e.artist.clone().unwrap_or_default(),
+                    album: None,
                 }),
             ),
             "play" => m.update_play_state(deck, e.playing.unwrap_or(false)),

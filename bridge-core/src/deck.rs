@@ -28,6 +28,8 @@ pub enum State {
 pub struct Track {
     pub title: String,
     pub artist: String,
+    /// Sent when the source knows it (Serato); never part of "same track".
+    pub album: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -495,6 +497,7 @@ mod tests {
         Some(Track {
             title: title.into(),
             artist: "X".into(),
+            album: None,
         })
     }
 

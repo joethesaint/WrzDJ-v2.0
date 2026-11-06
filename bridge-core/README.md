@@ -103,8 +103,46 @@ The Node Bridge ran as compiled JavaScript (`tsc`, then `node dist/index.js`), n
 Measured on Linux in a cloud container. The Electron app adds Chromium on top of the Node
 figure; on a DJ's Windows laptop next to Serato, measure again.
 
+## Piece 4: Serato
+
+`src/serato.rs` ports `bridge/src/plugins/serato-plugin.ts` and `serato-session-parser.ts`: the
+`oent`/`adat` chunk reader (UTF-16BE text, BPM read with JavaScript's `parseFloat`, tags compared
+as Node's `ascii` decoding does), and the session watcher: newest `.session` watched from its end,
+new bytes only, half-written chunks read again, deleted file means disconnected, 5 read errors
+rescan, per-deck repeat filter, album sent when known. `wrzdj-bridge` runs it with
+`WRZDJ_PLUGIN=serato` (`WRZDJ_SERATO_PATH`, `WRZDJ_SERATO_POLL_MS` optional).
+
+Two differences, on purpose: a newer session file is found by checking on each poll rather than
+with `fs.watch` (same outcome as the watcher: read from its start), and a lone UTF-16 surrogate
+becomes U+FFFD (JavaScript keeps it, and the server can't store it).
+
+**Proof it matches.** `tests/serato_differential.rs` appends generated session bytes (emoji, lone
+surrogates, odd-length and 70 KB fields, overrunning lengths, unknown fields and chunks, high-bit
+tags, BPM text such as " 1e3x" and "Infinity", decks 0 and 2^32-1, empty entries, repeats) to a
+real file in random cuts, polling after each: the real TypeScript plugin
+(`bridge/scripts/serato-trace.ts`) and the port must emit the same tracks and parse the same
+entries. 3,000 sessions, 15,274 entries, 11,494 tracks: identical. Removing the tag's high-bit
+mask, or `parseFloat`'s leading-space skip, is caught.
+
+**Simulator.** `serato-sim <dir> [step ms]` writes a live session as a DJ would: two decks, a
+repeat, a track written in two halves, a new session file, then its deletion.
+
+**Side by side**, 2 minutes, each Bridge on its own simulated Serato, local server:
+
+| | Node (`node dist/index.js`) | Rust (`wrzdj-bridge`) |
+|---|---|---|
+| Live, in order | Water (deck 1), Calm Down (deck 2) | the same |
+| Tracks seen, repeats filtered, session switches | the same sequence | the same sequence |
+| Memory (RSS) | 86.9-92.2 MB | 3.7-3.9 MB |
+| CPU over 2 min | 0.23 s | 0.01 s |
+
+Only Water and Calm Down go live in both: Serato reports no play or pause, so a deck counts as
+playing until its track changes, and deck 2 holds now playing. The one difference in the server's
+records came from stopping the Node Bridge, which clears now playing on SIGTERM; the Rust Bridge
+doesn't yet (next piece).
+
 ## Next pieces
 
-1. The command poller and a clean shutdown, so the Rust Bridge does everything the Node one does
-   for Traktor.
-2. The other plugins (StageLinQ, Pro DJ Link, Serato), then the app shell.
+1. The command poller, the clear on Ctrl+C and the plugin restart after a disconnect, shared by
+   every source; then a scenario harness that drives both Bridges and compares what the server got.
+2. StageLinQ and Pro DJ Link, each with a simulator; then the app shell.

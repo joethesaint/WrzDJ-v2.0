@@ -29,7 +29,7 @@ fn main() {
     );
     let ok = match args.first().map(String::as_str) {
         Some("nowplaying") if args.len() >= 3 => {
-            client.post_now_playing(&args[1], &args[2], "1", "bridge-core")
+            client.post_now_playing(&args[1], &args[2], None, "1", "bridge-core")
         }
         Some("status") => client.post_status(true, Some("bridge-core"), "bridge-core"),
         Some("clear") => {

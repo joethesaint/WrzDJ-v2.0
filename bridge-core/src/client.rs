@@ -213,12 +213,13 @@ impl<I: Io> Client<I> {
         &mut self,
         title: &str,
         artist: &str,
+        album: Option<&str>,
         deck: &str,
         source: &str,
     ) -> bool {
         let payload = json!({
             "event_code": self.cfg.event_code, "title": title, "artist": artist,
-            "album": null, "deck": deck, "source": source,
+            "album": album, "deck": deck, "source": source,
         });
         let ok = self.post_with_retry("/api/bridge/nowplaying", &payload);
         if !ok {

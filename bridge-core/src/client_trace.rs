@@ -67,7 +67,7 @@ pub fn run(trace: &ClientTrace) -> Value {
             "live" if c.should_skip(artist, title) => json!("skipped"),
             "live" => {
                 c.update_last_track(artist, title);
-                json!(c.post_now_playing(title, artist, "1", "traktor-broadcast"))
+                json!(c.post_now_playing(title, artist, None, "1", "traktor-broadcast"))
             }
             "status" => json!(c.post_status(
                 op.connected.unwrap_or(true),
