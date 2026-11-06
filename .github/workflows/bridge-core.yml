@@ -1,0 +1,60 @@
+name: Bridge core (Rust)
+
+# Builds and tests bridge-core, the Rust port of the Bridge, on Windows, macOS and Linux.
+# Runs only on the public fork (free standard runners); elsewhere the job is skipped.
+on:
+  push:
+    branches: ['rust/**']
+    paths: ['bridge-core/**', 'bridge/**', '.github/workflows/bridge-core.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bridge-core-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    if: github.repository == 'joethesaint/WrzDJ-v2.0'
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: bridge-core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: bridge-core
+      - uses: actions/setup-node@v4
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          node-version: 22
+      - name: TypeScript side for the comparison tests
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: bridge
+        run: npm ci --no-audit --no-fund
+      - name: Format
+        run: cargo fmt --check
+      - name: Lint
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Tests (unit; comparison with the TypeScript on Linux)
+        run: cargo test --locked
+      - name: Real OS keychain round trip
+        if: matrix.os != 'macos-latest'
+        run: cargo test --locked --lib -- --ignored os_keychain
+      - name: Release build
+        run: cargo build --locked --release --bins
+      - name: Binary sizes
+        shell: bash
+        run: ls -l target/release/ | grep -E 'wrzdj-bridge|bridge-post|serato-sim' || true
