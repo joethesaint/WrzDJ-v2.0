@@ -53,8 +53,10 @@ pub struct SessionEntry {
 /// `decodeUtf16BE`: code units up to the first zero; an odd last byte is ignored.
 pub fn decode_utf16be(bytes: &[u8]) -> String {
     let units: Vec<u16> = bytes
-        .chunks_exact(2)
-        .map(|p| u16::from_be_bytes([p[0], p[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|p| u16::from_be_bytes(*p))
         .take_while(|&u| u != 0)
         .collect();
     String::from_utf16_lossy(&units)
