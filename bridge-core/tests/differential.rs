@@ -52,7 +52,8 @@ fn generate(seed: u64, count: usize) -> Value {
                         let level = [0.0, 0.0, 0.5, 1.0][r.below(4) as usize];
                         json!({"t": t, "op": "fader", "deck": deck, "level": level})
                     }
-                    15..=16 => json!({"t": t, "op": "master", "deck": deck}),
+                    15 => json!({"t": t, "op": "master", "deck": deck}),
+                    16 => json!({"t": t, "op": if r.below(3) == 0 { "reset" } else { "master" }, "deck": deck}),
                     _ => json!({"t": t, "op": "advance"}),
                 });
             }

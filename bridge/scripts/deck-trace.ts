@@ -71,6 +71,7 @@ for (const trace of traces) {
     } else if (e.op === "play") m.updatePlayState(deck, e.playing ?? false);
     else if (e.op === "fader") m.updateFaderLevel(deck, e.level ?? 0);
     else if (e.op === "master") m.setMasterDeck(deck);
+    else if (e.op === "reset") m.reset();
   }
   const decks = m.getDeckIds().map((id: string) => {
     const s = m.getDeckState(id);

@@ -69,4 +69,21 @@ impl Io for HttpIo {
             Err(e) => Err(SendError::Network(e.to_string())),
         }
     }
+
+    fn get(&mut self, path: &str) -> Result<String, SendError> {
+        let url = format!("{}{}", self.base_url, path);
+        match self
+            .agent
+            .get(&url)
+            .header("X-Bridge-API-Key", &self.api_key)
+            .call()
+        {
+            Ok(mut r) if r.status().is_success() => r
+                .body_mut()
+                .read_to_string()
+                .map_err(|e| SendError::Network(e.to_string())),
+            Ok(r) => Err(SendError::Status(r.status().as_u16())),
+            Err(e) => Err(SendError::Network(e.to_string())),
+        }
+    }
 }

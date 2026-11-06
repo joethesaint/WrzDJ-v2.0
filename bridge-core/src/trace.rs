@@ -70,6 +70,10 @@ pub fn run(trace: &Trace) -> Value {
             "play" => m.update_play_state(deck, e.playing.unwrap_or(false)),
             "fader" => m.update_fader_level(deck, e.level.unwrap_or(0.0)),
             "master" => m.set_master_deck(deck),
+            "reset" => {
+                m.reset();
+                Ok(())
+            }
             _ => Ok(()),
         };
         out.extend(m.take_outputs());

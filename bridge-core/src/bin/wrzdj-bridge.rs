@@ -10,15 +10,19 @@
 //! WRZDJ_REMEMBER_KEY=true to keep the key in the OS keychain, so later starts need no
 //! WRZDJ_BRIDGE_API_KEY. The event is checked every 30 s; deleted or expired stops the Bridge.
 //!
-//! Not yet ported: the command poller (dashboard "reset decks" and the like) and the plugin
-//! restart after a disconnect.
+//! Dashboard commands are polled every 5 s (`command-poller.ts`): reset_decks, reconnect,
+//! restart, setbuilder_transport (logged). After a disconnect the source restarts with backoff
+//! (2 s, doubling, at most 30 s; `plugin-bridge.ts`). For Serato a restart starts a new session
+//! watcher; for Traktor the listener stays bound and the title filter starts afresh.
 //!
 //! Threads: the source (Traktor listener or Serato poller) sends events; this loop runs the deck
 //! state machine (sleeping until its next timer or the 120 s heartbeat); one worker thread owns
 //! the server client, so a slow or failing server never holds up deck timing.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use wrzdj_bridge_core::client::{Client, ClientConfig};
@@ -33,6 +37,17 @@ use wrzdj_bridge_core::shell::watch::{HEALTH_CHECK_INTERVAL, HealthWatcher, netw
 use wrzdj_bridge_core::traktor::{self, TrackFilter, TraktorEvent};
 
 const HEARTBEAT: Duration = Duration::from_secs(120);
+/// `command-poller.ts` POLL_INTERVAL_MS.
+const COMMAND_POLL: Duration = Duration::from_secs(5);
+/// `plugin-bridge.ts` RECONNECT_INITIAL_MS, RECONNECT_MAX_MS (doubling each attempt).
+const RECONNECT_INITIAL_MS: u64 = 2_000;
+const RECONNECT_MAX_MS: u64 = 30_000;
+
+/// The wait before reconnect attempt `attempt` (1-based).
+fn reconnect_delay(attempt: u32) -> Duration {
+    let ms = RECONNECT_INITIAL_MS.saturating_mul(1u64 << (attempt - 1).min(20));
+    Duration::from_millis(ms.min(RECONNECT_MAX_MS))
+}
 
 /// What any source tells the loop (the plugin events `plugin-bridge.ts` listens to).
 enum SourceEvent {
@@ -46,12 +61,17 @@ enum SourceEvent {
     Stop(&'static str),
     /// Ctrl+C or SIGTERM: clear once, report disconnected, exit.
     Shutdown,
+    /// A dashboard command (`command_type`, `payload`).
+    Command(String, serde_json::Value),
 }
 
 /// A source, as `plugin-types.ts` describes it.
 struct Source {
     id: &'static str,
+    name: &'static str,
     multi_deck: bool,
+    /// Stop the source and start it again (the plugin's stop() then start()).
+    restart: Box<dyn FnMut()>,
 }
 
 enum Job {
@@ -128,13 +148,18 @@ fn start_traktor(tx: Sender<SourceEvent>) -> Source {
     log(&format!(
         "Configure Traktor: Settings → Broadcasting → Address: 127.0.0.1, Port: {port}"
     ));
+    let filter = Arc::new(Mutex::new(TrackFilter::default()));
+    let shared = Arc::clone(&filter);
     std::thread::spawn(move || {
-        let mut filter = TrackFilter::default();
         for ev in trx {
             let out = match ev {
                 TraktorEvent::Connected => SourceEvent::Connected("Traktor"),
                 TraktorEvent::Disconnected => SourceEvent::Disconnected,
-                TraktorEvent::Metadata(raw) => match filter.accept(&raw) {
+                TraktorEvent::Metadata(raw) => match shared
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .accept(&raw)
+                {
                     Some(t) => SourceEvent::Track {
                         deck: "1".into(),
                         track: Track {
@@ -153,7 +178,13 @@ fn start_traktor(tx: Sender<SourceEvent>) -> Source {
     });
     Source {
         id: "traktor-broadcast",
+        name: "Traktor Broadcast",
         multi_deck: false,
+        // The listener stays bound (Traktor reconnects to it by itself); a restart forgets the
+        // last title, so the same song is a track again.
+        restart: Box::new(move || {
+            *filter.lock().unwrap_or_else(|p| p.into_inner()) = TrackFilter::default();
+        }),
     }
 }
 
@@ -169,39 +200,53 @@ fn start_serato(tx: Sender<SourceEvent>) -> Source {
         "Looking for Serato session files in: {}",
         dir.display()
     ));
-    std::thread::spawn(move || {
-        let (mut watcher, first) = SessionWatcher::start(dir);
-        let mut events = first;
-        loop {
-            for ev in std::mem::take(&mut events) {
-                let out = match ev {
-                    SeratoEvent::Connected => SourceEvent::Connected("Serato DJ"),
-                    SeratoEvent::Disconnected => SourceEvent::Disconnected,
-                    SeratoEvent::Track {
-                        deck,
-                        title,
-                        artist,
-                        album,
-                    } => SourceEvent::Track {
-                        deck,
-                        track: Track {
+    let watch = move |stop: Arc<AtomicBool>| {
+        let (dir, tx) = (dir.clone(), tx.clone());
+        std::thread::spawn(move || {
+            let (mut watcher, first) = SessionWatcher::start(dir);
+            let mut events = first;
+            loop {
+                for ev in std::mem::take(&mut events) {
+                    let out = match ev {
+                        SeratoEvent::Connected => SourceEvent::Connected("Serato DJ"),
+                        SeratoEvent::Disconnected => SourceEvent::Disconnected,
+                        SeratoEvent::Track {
+                            deck,
                             title,
                             artist,
                             album,
+                        } => SourceEvent::Track {
+                            deck,
+                            track: Track {
+                                title,
+                                artist,
+                                album,
+                            },
                         },
-                    },
-                };
-                if tx.send(out).is_err() {
+                    };
+                    if stop.load(Ordering::SeqCst) || tx.send(out).is_err() {
+                        return;
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(poll));
+                if stop.load(Ordering::SeqCst) {
                     return;
                 }
+                events = runlog_helpers::safely("serato:poll", Vec::new(), || watcher.poll());
             }
-            std::thread::sleep(Duration::from_millis(poll));
-            events = runlog_helpers::safely("serato:poll", Vec::new(), || watcher.poll());
-        }
-    });
+        });
+    };
+    let mut stop = Arc::new(AtomicBool::new(false));
+    watch(Arc::clone(&stop));
     Source {
         id: "serato",
+        name: "Serato DJ",
         multi_deck: true,
+        restart: Box::new(move || {
+            stop.store(true, Ordering::SeqCst);
+            stop = Arc::new(AtomicBool::new(false));
+            watch(Arc::clone(&stop));
+        }),
     }
 }
 
@@ -265,7 +310,7 @@ fn main() {
     }) {
         log(&format!("Could not listen for Ctrl+C: {e}"));
     }
-    let source = match env("WRZDJ_PLUGIN", "traktor-broadcast").as_str() {
+    let mut source = match env("WRZDJ_PLUGIN", "traktor-broadcast").as_str() {
         "traktor-broadcast" => start_traktor(tx),
         "serato" => start_serato(tx),
         other => fail(&format!(
@@ -314,6 +359,9 @@ fn main() {
 
     let mut decks = DeckStateManager::new(cfg);
     let mut next_heartbeat: Option<Instant> = None;
+    // plugin-bridge.ts auto-reconnect: only after a source that had connected drops.
+    let (mut was_connected, mut reconnect_attempt, mut reconnect_at) =
+        (false, 0u32, None::<Instant>);
     let exit_code;
     loop {
         let now_ms = started.elapsed().as_millis() as u64;
@@ -321,8 +369,8 @@ fn main() {
         if let Some(due) = decks.next_due() {
             wait = wait.min(Duration::from_millis(due.saturating_sub(now_ms)));
         }
-        if let Some(h) = next_heartbeat {
-            wait = wait.min(h.saturating_duration_since(Instant::now()));
+        for t in [next_heartbeat, reconnect_at].into_iter().flatten() {
+            wait = wait.min(t.saturating_duration_since(Instant::now()));
         }
         // Every wait has a floor, so a timer due now can't spin the loop.
         let event = rx.recv_timeout(wait.max(Duration::from_millis(5)));
@@ -330,6 +378,8 @@ fn main() {
         match event {
             Ok(SourceEvent::Connected(device)) => {
                 log(&format!("Device connected: {device}"));
+                was_connected = true;
+                reconnect_attempt = 0;
                 next_heartbeat = Some(Instant::now() + HEARTBEAT);
                 let n = decks.decks().len();
                 let _ = jobs.send(Job::Status {
@@ -349,6 +399,61 @@ fn main() {
                     enriched: false,
                     decks: 0,
                 });
+                if was_connected && reconnect_at.is_none() {
+                    reconnect_attempt += 1;
+                    let delay = reconnect_delay(reconnect_attempt);
+                    log(&format!(
+                        "Device disconnected — reconnecting in {}s (attempt {reconnect_attempt})",
+                        delay.as_secs()
+                    ));
+                    reconnect_at = Some(Instant::now() + delay);
+                }
+            }
+            Ok(SourceEvent::Command(kind, payload)) => {
+                log(&format!("Executing command: {kind}"));
+                match kind.as_str() {
+                    // resetDecks(): reset, then clear.
+                    "reset_decks" => {
+                        decks.reset();
+                        let _ = jobs.send(Job::Clear);
+                    }
+                    // reconnect(): cancel any wait and reconnect now.
+                    "reconnect" => {
+                        reconnect_at = None;
+                        reconnect_attempt = 0;
+                        log(&format!("Reconnecting to {}...", source.name));
+                        (source.restart)();
+                        decks.reset();
+                        log(&format!("Reconnected to {} successfully", source.name));
+                    }
+                    // restart(): stop (clears now playing), start again.
+                    "restart" => {
+                        reconnect_at = None;
+                        reconnect_attempt = 0;
+                        was_connected = false;
+                        next_heartbeat = None;
+                        decks.reset();
+                        let _ = jobs.send(Job::Clear);
+                        (source.restart)();
+                    }
+                    "setbuilder_transport" => {
+                        let action = payload["action"].as_str().unwrap_or("unknown");
+                        let title = payload["title"].as_str().unwrap_or("");
+                        let position = payload["position_sec"].as_f64().unwrap_or(0.0);
+                        let title = if title.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" \"{title}\"")
+                        };
+                        log(&format!(
+                            "Setbuilder transport command received: {action}{title} @ {position:.1}s"
+                        ));
+                    }
+                    other => runlog_helpers::warn(
+                        "commands:unknown",
+                        format!("Unknown command type: {other}"),
+                    ),
+                }
             }
             Ok(SourceEvent::Track { deck, track }) => {
                 // plugin-bridge.ts: one virtual deck for single-deck sources, skip a repeat,
@@ -404,6 +509,13 @@ fn main() {
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => fail("the source stopped"),
         }
+        if reconnect_at.is_some_and(|t| Instant::now() >= t) {
+            reconnect_at = None;
+            log(&format!("Reconnecting to {}...", source.name));
+            (source.restart)();
+            decks.reset();
+            log(&format!("Reconnected to {} successfully", source.name));
+        }
         if next_heartbeat.is_some_and(|h| Instant::now() >= h) {
             next_heartbeat = Some(Instant::now() + HEARTBEAT);
             let n = decks.decks().len();
@@ -457,7 +569,30 @@ fn spawn_client(
                 min_play_s,
             };
             let mut client = Client::new(HttpIo::new(&url, &key), cfg);
-            for job in rx {
+            log("Command poller started");
+            let mut next_poll = Instant::now() + COMMAND_POLL;
+            loop {
+                let wait = next_poll.saturating_duration_since(Instant::now());
+                let job = match rx.recv_timeout(wait.max(Duration::from_millis(5))) {
+                    Ok(job) => Some(job),
+                    Err(RecvTimeoutError::Timeout) => None,
+                    Err(RecvTimeoutError::Disconnected) => return,
+                };
+                let Some(job) = job else {
+                    next_poll = Instant::now() + COMMAND_POLL;
+                    let commands = runlog_helpers::safely("commands:poll", Vec::new(), || {
+                        client.poll_commands()
+                    });
+                    for (kind, payload) in commands {
+                        log(&format!("Received command: {kind}"));
+                        let _ = stop.send(SourceEvent::Command(kind, payload));
+                    }
+                    if client.session_expired() {
+                        expire(&mut client, plugin_id, &stop);
+                        return;
+                    }
+                    continue;
+                };
                 runlog_helpers::safely("client:job", (), || match job {
                     Job::Live { deck, track: t } => {
                         if client.should_skip(&t.artist, &t.title) {
@@ -496,14 +631,31 @@ fn spawn_client(
                 // bridge-runner.ts: a 401 stops the Bridge; its stop() clears and reports
                 // disconnected first.
                 if client.session_expired() {
-                    eprintln!("[Bridge] POST returned 401 — session expired");
-                    client.clear_now_playing();
-                    client.post_status(false, None, plugin_id);
-                    let _ = stop.send(SourceEvent::Stop("Session expired — please log in again"));
+                    expire(&mut client, plugin_id, &stop);
                     return;
                 }
             }
         })
         .unwrap_or_else(|e| fail(&format!("could not start the server client: {e}")));
     (tx, handle)
+}
+
+/// bridge-runner.ts: a 401 stops the Bridge; its stop() clears and reports disconnected first.
+fn expire(client: &mut Client<HttpIo>, plugin_id: &'static str, stop: &Sender<SourceEvent>) {
+    eprintln!("[Bridge] POST returned 401 — session expired");
+    client.clear_now_playing();
+    client.post_status(false, None, plugin_id);
+    let _ = stop.send(SourceEvent::Stop("Session expired — please log in again"));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reconnect_delay;
+
+    #[test]
+    fn reconnect_waits_double_from_two_seconds_up_to_thirty() {
+        let secs: Vec<u64> = (1..=7).map(|a| reconnect_delay(a).as_secs()).collect();
+        assert_eq!(secs, [2, 4, 8, 16, 30, 30, 30]);
+        assert_eq!(reconnect_delay(500).as_secs(), 30);
+    }
 }

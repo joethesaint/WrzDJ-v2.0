@@ -169,6 +169,18 @@ impl DeckStateManager {
     pub fn decks(&self) -> &[Deck] {
         &self.decks
     }
+    /// `reset()`: forget every deck (a reconnect or a "reset decks" command). As in the
+    /// TypeScript, it cancels the timers the decks hold and the switch timer; a timer whose handle
+    /// was already replaced still fires, and its callback guards itself.
+    pub fn reset(&mut self) {
+        for (_, id) in std::mem::take(&mut self.deck_timer) {
+            self.cancel(id);
+        }
+        self.clear_switch_timer();
+        self.decks.clear();
+        self.current = None;
+    }
+
     /// When the next timer fires, if any (for a caller that sleeps until then).
     pub fn next_due(&self) -> Option<u64> {
         self.scheduled.iter().map(|t| t.due).min()

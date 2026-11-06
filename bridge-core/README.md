@@ -80,7 +80,11 @@ server, the listener also reads a body sent with no length (an Icecast `SOURCE` 
 `src/bin/wrzdj-bridge.rs` is `bridge/src/index.ts` for Traktor: same environment variables, plus
 `WRZDJ_TRAKTOR_PORT`. One loop runs the deck state machine, sleeping until its next timer or the
 120 s heartbeat; one worker thread owns the server client, so a slow server never delays deck
-timing. Not ported yet: the command poller, and the clear on Ctrl+C.
+timing. The worker also polls `/api/bridge/commands/{code}` every 5 s (`command-poller.ts`; skipped
+while the breaker is open): `reset_decks`, `reconnect`, `restart` and `setbuilder_transport` (logged)
+act as in `plugin-bridge.ts`, and anything else is warned about. After a source that had connected
+drops, it restarts with backoff (2, 4, 8, 16, then 30 s). Serato's restart starts a new session
+watcher; Traktor's listener stays bound and the title filter starts afresh.
 
 **Proof it matches.** `tests/traktor_differential.rs` generates streams (random audio bytes;
 titles with accents, emoji, invalid UTF-8, a byte-order mark, NUL padding, extra quotes, line
@@ -157,6 +161,5 @@ doesn't yet (next piece).
 
 ## Next pieces
 
-1. The command poller, the clear on Ctrl+C and the plugin restart after a disconnect, shared by
-   every source; then a scenario harness that drives both Bridges and compares what the server got.
+1. A scenario harness that drives both Bridges and compares what the server got.
 2. StageLinQ and Pro DJ Link, each with a simulator; then the app shell.
