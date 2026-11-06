@@ -31,6 +31,7 @@ to propose. `main` here tracks upstream `main`; this file is the only addition.
 |---|---|---|
 | [#961](https://github.com/wrzonance/WrzDJ/issues/961) | [#962](https://github.com/wrzonance/WrzDJ/pull/962) | A replay that fails partway no longer drops the buffered tracks (CI green) |
 | [#963](https://github.com/wrzonance/WrzDJ/issues/963) | [#964](https://github.com/wrzonance/WrzDJ/pull/964) | Stopping the Bridge sends one clear, and the server archives a song once |
+| [#965](https://github.com/wrzonance/WrzDJ/issues/965) | — | RFC: the Bridge in Rust (see `rust/bridge-core`) |
 
 ## 3. On this fork only
 
