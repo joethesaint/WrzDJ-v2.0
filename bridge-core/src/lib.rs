@@ -9,6 +9,7 @@ pub mod client;
 pub mod client_trace;
 pub mod deck;
 pub mod http;
+pub mod log;
 pub mod serato;
 pub mod shell;
 pub mod trace;

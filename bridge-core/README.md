@@ -141,6 +141,20 @@ playing until its track changes, and deck 2 holds now playing. The one differenc
 records came from stopping the Node Bridge, which clears now playing on SIGTERM; the Rust Bridge
 doesn't yet (next piece).
 
+## Errors, keys and stops
+
+- **Run log** (`shell::runlog`): `wrzdj-bridge` writes `errors.log` (for people) and `errors.jsonl` (for
+  agents) to `WRZDJ_LOG_DIR`, or the system's log folder. A panic on any thread is recorded. Every
+  failure in the Bridge's own code is logged under `<area>:<detail>`: `client:post`, `client:auth`,
+  `client:replay`, `client:clear`, `client:breaker`, `serato:read`, `serato:session`, `serato:rescan`,
+  `traktor:accept`, `traktor:read`, `deck:limit`, `bridge:stop`. Each Serato poll, Traktor connection
+  and server job runs inside `run_safely`, so a panic is recorded and the loop carries on. At exit
+  it prints "N issues this run — see …".
+- **Key:** `WRZDJ_BRIDGE_API_KEY`, else the OS keychain; `WRZDJ_REMEMBER_KEY=true` saves it there.
+- **Stops**, as `bridge-runner.ts`: a 401 ("Session expired — please log in again"), or the event
+  deleted or expired (checked every 30 s). Each clears, reports disconnected and exits 3. Ctrl+C
+  and SIGTERM clear once and exit 0.
+
 ## Next pieces
 
 1. The command poller, the clear on Ctrl+C and the plugin restart after a disconnect, shared by

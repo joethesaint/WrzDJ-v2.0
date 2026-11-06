@@ -456,7 +456,7 @@ impl DeckStateManager {
             if previous.as_deref() == Some(&id) {
                 continue;
             }
-            let i = self.idx(&id).expect("listed deck exists");
+            let Some(i) = self.idx(&id) else { continue };
             let d = &self.decks[i];
             if d.state == State::Playing && !d.reported {
                 if self.blocked(d) {

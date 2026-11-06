@@ -22,6 +22,8 @@ use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
+use crate::log;
+
 pub const DEFAULT_POLL_MS: u64 = 1000;
 pub const MIN_POLL_MS: u64 = 200;
 pub const MAX_POLL_MS: u64 = 10_000;
@@ -295,11 +297,13 @@ impl SessionWatcher {
         let mut file = match fs::File::open(&path) {
             Ok(f) => f,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                log::warn("serato:session", format!("{} is gone", path.display()));
                 self.session = None;
                 out.push(SeratoEvent::Disconnected);
                 return out;
             }
-            Err(_) => {
+            Err(e) => {
+                log::warn("serato:read", format!("open {}: {e}", path.display()));
                 self.read_error(&mut out);
                 return out;
             }
@@ -307,7 +311,8 @@ impl SessionWatcher {
         let bytes = match read_from(&mut file, self.offset) {
             Ok(Some(b)) => b,
             Ok(None) => return out,
-            Err(_) => {
+            Err(e) => {
+                log::warn("serato:read", format!("read {}: {e}", path.display()));
                 self.read_error(&mut out);
                 return out;
             }
@@ -331,6 +336,13 @@ impl SessionWatcher {
     fn read_error(&mut self, out: &mut Vec<SeratoEvent>) {
         self.read_errors += 1;
         if self.read_errors >= READ_ERRORS_BEFORE_RESCAN {
+            log::warn(
+                "serato:rescan",
+                format!(
+                    "session file unreadable after {} attempts — rescanning",
+                    self.read_errors
+                ),
+            );
             self.session = None;
             self.offset = 0;
             self.read_errors = 0;

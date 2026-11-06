@@ -17,6 +17,8 @@ use std::collections::VecDeque;
 
 use serde_json::{Value, json};
 
+use crate::log;
+
 pub const MAX_RETRIES: u32 = 3;
 pub const INITIAL_BACKOFF_MS: u64 = 2000;
 pub const DELETE_MAX_RETRIES: u32 = 2;
@@ -30,6 +32,15 @@ pub enum SendError {
     Status(u16),
     /// No answer: refused, dropped, timed out.
     Network(String),
+}
+
+impl std::fmt::Display for SendError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SendError::Status(code) => write!(f, "HTTP {code}"),
+            SendError::Network(reason) => write!(f, "{reason}"),
+        }
+    }
 }
 
 /// The network and the clock.
@@ -196,16 +207,35 @@ impl<I: Io> Client<I> {
                 // bridge-runner.ts: a 401 is the key, not the server being down. Stop retrying, don't
                 // count it against the breaker, and stop the Bridge ("Session expired").
                 Err(SendError::Status(401)) => {
+                    log::error(
+                        "client:auth",
+                        format!("POST {path} returned 401 — session expired"),
+                    );
                     self.session_expired = true;
                     return false;
                 }
-                Err(_) if attempt < MAX_RETRIES => {
+                Err(e) if attempt < MAX_RETRIES => {
+                    log::warn(
+                        "client:post",
+                        format!("POST {path} attempt {}: {e}", attempt + 1),
+                    );
                     self.io.sleep(INITIAL_BACKOFF_MS << attempt);
                 }
-                Err(_) => {}
+                Err(e) => {
+                    log::error(
+                        "client:post",
+                        format!("POST {path} failed after {} attempts: {e}", MAX_RETRIES + 1),
+                    );
+                }
             }
         }
         self.breaker.failure(self.io.now());
+        if self.breaker.state == BreakerState::Open {
+            log::warn(
+                "client:breaker",
+                "circuit breaker open: pausing posts for 60 s",
+            );
+        }
         false
     }
 
@@ -216,6 +246,13 @@ impl<I: Io> Client<I> {
             replayed["delayed"] = json!(true);
             if !self.post_with_retry("/api/bridge/nowplaying", &replayed) {
                 self.requeue_front(&tracks[i..]); // keep the unsent tracks (#961)
+                log::warn(
+                    "client:replay",
+                    format!(
+                        "replay stopped; {} track(s) kept for later",
+                        tracks.len() - i
+                    ),
+                );
                 return;
             }
         }
@@ -288,7 +325,13 @@ impl<I: Io> Client<I> {
                 Err(_) if attempt < DELETE_MAX_RETRIES => {
                     self.io.sleep(DELETE_BACKOFF_MS << attempt)
                 }
-                Err(_) => {}
+                Err(e) => log::warn(
+                    "client:clear",
+                    format!(
+                        "DELETE {path} failed after {} attempts: {e}",
+                        DELETE_MAX_RETRIES + 1
+                    ),
+                ),
             }
         }
     }

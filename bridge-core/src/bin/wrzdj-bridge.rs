@@ -6,8 +6,12 @@
 //! USE_FADER_DETECTION, MASTER_DECK_PRIORITY. Rust-only: WRZDJ_TRAKTOR_PORT (default 8123),
 //! WRZDJ_SERATO_PATH (default ~/Music/_Serato_/History/Sessions), WRZDJ_SERATO_POLL_MS (1000).
 //!
-//! Not yet ported: the command poller (dashboard "reset decks" and the like), the shutdown clear
-//! on Ctrl+C, and the plugin restart after a disconnect.
+//! Also: WRZDJ_LOG_DIR (the run log: errors.log for people, errors.jsonl for agents), and
+//! WRZDJ_REMEMBER_KEY=true to keep the key in the OS keychain, so later starts need no
+//! WRZDJ_BRIDGE_API_KEY. The event is checked every 30 s; deleted or expired stops the Bridge.
+//!
+//! Not yet ported: the command poller (dashboard "reset decks" and the like) and the plugin
+//! restart after a disconnect.
 //!
 //! Threads: the source (Traktor listener or Serato poller) sends events; this loop runs the deck
 //! state machine (sleeping until its next timer or the 120 s heartbeat); one worker thread owns
@@ -20,7 +24,12 @@ use std::time::{Duration, Instant};
 use wrzdj_bridge_core::client::{Client, ClientConfig};
 use wrzdj_bridge_core::deck::{Config, DeckStateManager, Output, Track};
 use wrzdj_bridge_core::http::HttpIo;
+use wrzdj_bridge_core::log as runlog_helpers;
 use wrzdj_bridge_core::serato::{self, SeratoEvent, SessionWatcher};
+use wrzdj_bridge_core::shell::keychain::KeychainVault;
+use wrzdj_bridge_core::shell::runlog;
+use wrzdj_bridge_core::shell::settings::TokenVault;
+use wrzdj_bridge_core::shell::watch::{HEALTH_CHECK_INTERVAL, HealthWatcher, network_warnings};
 use wrzdj_bridge_core::traktor::{self, TrackFilter, TraktorEvent};
 
 const HEARTBEAT: Duration = Duration::from_secs(120);
@@ -72,7 +81,38 @@ fn seconds(key: &str, default: u64) -> u64 {
 
 fn fail(message: &str) -> ! {
     eprintln!("[Bridge] {message}");
+    runlog_helpers::error("bridge:start", message);
+    summarize();
     std::process::exit(1);
+}
+
+/// Where the run log goes: WRZDJ_LOG_DIR, else the system's place for an app's logs.
+fn log_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("WRZDJ_LOG_DIR") {
+        return PathBuf::from(dir);
+    }
+    let var = |k: &str| std::env::var_os(k).map(PathBuf::from);
+    if cfg!(windows) {
+        if let Some(d) = var("LOCALAPPDATA") {
+            return d.join("WrzDJ Bridge").join("logs");
+        }
+    } else if cfg!(target_os = "macos") {
+        if let Some(h) = var("HOME") {
+            return h.join("Library").join("Logs").join("WrzDJ Bridge");
+        }
+    } else if let Some(d) =
+        var("XDG_STATE_HOME").or_else(|| var("HOME").map(|h| h.join(".local").join("state")))
+    {
+        return d.join("wrzdj-bridge");
+    }
+    std::env::temp_dir().join("wrzdj-bridge-logs")
+}
+
+/// "N issues this run — see <errors.log>", when anything went wrong.
+fn summarize() {
+    if let Some(summary) = runlog::global().and_then(|l| l.summarize_run()) {
+        eprintln!("[Bridge] {summary}");
+    }
 }
 
 fn log(message: &str) {
@@ -133,7 +173,7 @@ fn start_serato(tx: Sender<SourceEvent>) -> Source {
         let (mut watcher, first) = SessionWatcher::start(dir);
         let mut events = first;
         loop {
-            for ev in events.drain(..) {
+            for ev in std::mem::take(&mut events) {
                 let out = match ev {
                     SeratoEvent::Connected => SourceEvent::Connected("Serato DJ"),
                     SeratoEvent::Disconnected => SourceEvent::Disconnected,
@@ -156,7 +196,7 @@ fn start_serato(tx: Sender<SourceEvent>) -> Source {
                 }
             }
             std::thread::sleep(Duration::from_millis(poll));
-            events = watcher.poll();
+            events = runlog_helpers::safely("serato:poll", Vec::new(), || watcher.poll());
         }
     });
     Source {
@@ -171,13 +211,37 @@ fn same_track(a: &Track, b: &Track) -> bool {
 }
 
 fn main() {
-    let (url, key, code) = (
+    let dir = log_dir();
+    let run = runlog::init(&dir);
+    runlog::install_panic_hook();
+    log(&format!(
+        "Run log: {} (run {})",
+        run.log_path().display(),
+        run.run_id()
+    ));
+    for warning in network_warnings(runlog::global()) {
+        log(&format!("Network: {warning}"));
+    }
+    let (url, code) = (
         env("WRZDJ_API_URL", "http://localhost:8000"),
-        env("WRZDJ_BRIDGE_API_KEY", ""),
         env("WRZDJ_EVENT_CODE", ""),
     );
+    // The key: from the environment, else the OS keychain (kept there only when asked).
+    let mut vault = KeychainVault::os(runlog::global());
+    let key = match env("WRZDJ_BRIDGE_API_KEY", "") {
+        k if !k.is_empty() => {
+            if env("WRZDJ_REMEMBER_KEY", "") == "true" {
+                vault.set(&k);
+                log("Key saved in the OS keychain for later starts");
+            }
+            k
+        }
+        _ => vault.get().unwrap_or_default(),
+    };
     if key.is_empty() {
-        fail("WRZDJ_BRIDGE_API_KEY is required. Generate one with: openssl rand -hex 32");
+        fail(
+            "WRZDJ_BRIDGE_API_KEY is required (or saved earlier with WRZDJ_REMEMBER_KEY=true). Generate one with: openssl rand -hex 32",
+        );
     }
     if code.is_empty() {
         fail("WRZDJ_EVENT_CODE is required. This is the event code from the DJ dashboard.");
@@ -194,6 +258,7 @@ fn main() {
     let started = Instant::now();
     let (tx, rx) = mpsc::channel();
     let stop_tx = tx.clone();
+    let health_tx = tx.clone();
     let signal_tx = tx.clone();
     if let Err(e) = ctrlc::set_handler(move || {
         let _ = signal_tx.send(SourceEvent::Shutdown);
@@ -220,6 +285,25 @@ fn main() {
         "WrzDJ Bridge (Rust, {}) for event {code}, server {url}",
         source.id
     ));
+    // bridge-runner.ts: every 30 s, a deleted or expired event stops the Bridge.
+    let _health = match HealthWatcher::spawn(
+        &url,
+        &code,
+        HEALTH_CHECK_INTERVAL,
+        runlog::global(),
+        move |reason| {
+            let _ = health_tx.send(SourceEvent::Stop(reason.message()));
+        },
+    ) {
+        Ok(watcher) => Some(watcher),
+        Err(e) => {
+            runlog_helpers::error(
+                "health:start",
+                format!("could not start the event check: {e}"),
+            );
+            None
+        }
+    };
     log("Bridge online — sending initial status to backend");
     let _ = jobs.send(Job::Status {
         connected: true,
@@ -230,6 +314,7 @@ fn main() {
 
     let mut decks = DeckStateManager::new(cfg);
     let mut next_heartbeat: Option<Instant> = None;
+    let exit_code;
     loop {
         let now_ms = started.elapsed().as_millis() as u64;
         let mut wait = Duration::from_secs(3600);
@@ -278,13 +363,20 @@ fn main() {
                         "Deck {deck}: \"{}\" by {}",
                         track.title, track.artist
                     ));
-                    let _ = decks.update_track_info(&deck, Some(track));
-                    let _ = decks.update_play_state(&deck, true);
+                    if decks.update_track_info(&deck, Some(track)).is_err()
+                        || decks.update_play_state(&deck, true).is_err()
+                    {
+                        runlog_helpers::warn(
+                            "deck:limit",
+                            format!("16 decks in use; deck {deck} ignored"),
+                        );
+                    }
                 }
             }
             Ok(SourceEvent::Shutdown) => {
                 // index.ts shutdown(): one clear, waited for, then disconnected (not two clears).
                 log("Received a stop signal, shutting down...");
+                exit_code = 0;
                 let _ = jobs.send(Job::Clear);
                 let _ = jobs.send(Job::Status {
                     connected: false,
@@ -295,8 +387,19 @@ fn main() {
                 break;
             }
             Ok(SourceEvent::Stop(reason)) => {
-                eprintln!("[Bridge] Stopped: {reason}");
-                std::process::exit(3);
+                // bridge-runner.ts stop(reason): clear, report disconnected, stop. After a 401 the
+                // worker has already done both and ended, so these go nowhere.
+                eprintln!("[Bridge] Stopping: {reason}");
+                runlog_helpers::error("bridge:stop", reason);
+                let _ = jobs.send(Job::Clear);
+                let _ = jobs.send(Job::Status {
+                    connected: false,
+                    device: None,
+                    enriched: false,
+                    decks: 0,
+                });
+                exit_code = 3;
+                break;
             }
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => fail("the source stopped"),
@@ -328,8 +431,12 @@ fn main() {
     }
     // Shutdown: let the worker finish the clear and the status, then exit.
     drop(jobs);
-    let _ = client_thread.join();
+    if client_thread.join().is_err() {
+        runlog_helpers::error("client:thread", "the server client thread panicked");
+    }
     log("Bridge stopped.");
+    summarize();
+    std::process::exit(exit_code);
 }
 
 fn spawn_client(
@@ -351,10 +458,10 @@ fn spawn_client(
             };
             let mut client = Client::new(HttpIo::new(&url, &key), cfg);
             for job in rx {
-                match job {
+                runlog_helpers::safely("client:job", (), || match job {
                     Job::Live { deck, track: t } => {
                         if client.should_skip(&t.artist, &t.title) {
-                            continue;
+                            return; // skipped, as shouldSkipTrack does
                         }
                         client.update_last_track(&t.artist, &t.title);
                         let ok = client.post_now_playing(
@@ -385,7 +492,7 @@ fn spawn_client(
                         client.post_status(connected, device, plugin_id);
                     }
                     Job::Clear => client.clear_now_playing(),
-                }
+                });
                 // bridge-runner.ts: a 401 stops the Bridge; its stop() clears and reports
                 // disconnected first.
                 if client.session_expired() {
@@ -397,6 +504,6 @@ fn spawn_client(
                 }
             }
         })
-        .expect("start the server client");
+        .unwrap_or_else(|e| fail(&format!("could not start the server client: {e}")));
     (tx, handle)
 }

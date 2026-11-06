@@ -13,6 +13,8 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::mpsc::Sender;
 
+use crate::log;
+
 pub const DEFAULT_PORT: u16 = 8123;
 pub const MAX_ICY_META_LENGTH: usize = 16_384;
 
@@ -176,11 +178,24 @@ pub fn listen(port: u16, tx: Sender<TraktorEvent>) -> std::io::Result<u16> {
     std::thread::Builder::new()
         .name("traktor-listen".into())
         .spawn(move || {
-            for stream in listener.incoming().flatten() {
+            for stream in listener.incoming() {
+                let stream = match stream {
+                    Ok(s) => s,
+                    Err(e) => {
+                        log::warn("traktor:accept", e);
+                        continue;
+                    }
+                };
                 let tx = tx.clone();
-                let _ = std::thread::Builder::new()
+                let spawned = std::thread::Builder::new()
                     .name("traktor-conn".into())
-                    .spawn(move || serve(stream, &tx));
+                    .spawn(move || log::safely("traktor:conn", (), || serve(stream, &tx)));
+                if let Err(e) = spawned {
+                    log::error(
+                        "traktor:thread",
+                        format!("could not start a connection thread: {e}"),
+                    );
+                }
             }
         })?;
     Ok(bound)
@@ -188,7 +203,9 @@ pub fn listen(port: u16, tx: Sender<TraktorEvent>) -> std::io::Result<u16> {
 
 fn serve(stream: TcpStream, tx: &Sender<TraktorEvent>) {
     let _ = tx.send(TraktorEvent::Connected);
-    let _ = read_stream(stream, tx);
+    if let Err(e) = read_stream(stream, tx) {
+        log::warn("traktor:read", e);
+    }
     let _ = tx.send(TraktorEvent::Disconnected);
 }
 
