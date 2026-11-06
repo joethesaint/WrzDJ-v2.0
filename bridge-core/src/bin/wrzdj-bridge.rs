@@ -35,6 +35,8 @@ enum SourceEvent {
     },
     /// Stop the Bridge (from the server client: the key was refused).
     Stop(&'static str),
+    /// Ctrl+C or SIGTERM: clear once, report disconnected, exit.
+    Shutdown,
 }
 
 /// A source, as `plugin-types.ts` describes it.
@@ -192,6 +194,12 @@ fn main() {
     let started = Instant::now();
     let (tx, rx) = mpsc::channel();
     let stop_tx = tx.clone();
+    let signal_tx = tx.clone();
+    if let Err(e) = ctrlc::set_handler(move || {
+        let _ = signal_tx.send(SourceEvent::Shutdown);
+    }) {
+        log(&format!("Could not listen for Ctrl+C: {e}"));
+    }
     let source = match env("WRZDJ_PLUGIN", "traktor-broadcast").as_str() {
         "traktor-broadcast" => start_traktor(tx),
         "serato" => start_serato(tx),
@@ -199,7 +207,7 @@ fn main() {
             "Plugin \"{other}\" isn't in the Rust Bridge yet. Available: traktor-broadcast, serato"
         )),
     };
-    let jobs = spawn_client(
+    let (jobs, client_thread) = spawn_client(
         url.clone(),
         key,
         code.clone(),
@@ -274,6 +282,18 @@ fn main() {
                     let _ = decks.update_play_state(&deck, true);
                 }
             }
+            Ok(SourceEvent::Shutdown) => {
+                // index.ts shutdown(): one clear, waited for, then disconnected (not two clears).
+                log("Received a stop signal, shutting down...");
+                let _ = jobs.send(Job::Clear);
+                let _ = jobs.send(Job::Status {
+                    connected: false,
+                    device: None,
+                    enriched: false,
+                    decks: 0,
+                });
+                break;
+            }
             Ok(SourceEvent::Stop(reason)) => {
                 eprintln!("[Bridge] Stopped: {reason}");
                 std::process::exit(3);
@@ -306,6 +326,10 @@ fn main() {
             }
         }
     }
+    // Shutdown: let the worker finish the clear and the status, then exit.
+    drop(jobs);
+    let _ = client_thread.join();
+    log("Bridge stopped.");
 }
 
 fn spawn_client(
@@ -316,9 +340,9 @@ fn spawn_client(
     started: Instant,
     plugin_id: &'static str,
     stop: Sender<SourceEvent>,
-) -> Sender<Job> {
+) -> (Sender<Job>, std::thread::JoinHandle<()>) {
     let (tx, rx) = mpsc::channel::<Job>();
-    std::thread::Builder::new()
+    let handle = std::thread::Builder::new()
         .name("server-client".into())
         .spawn(move || {
             let cfg = ClientConfig {
@@ -374,5 +398,5 @@ fn spawn_client(
             }
         })
         .expect("start the server client");
-    tx
+    (tx, handle)
 }
