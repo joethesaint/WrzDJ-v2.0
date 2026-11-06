@@ -10,5 +10,6 @@ pub mod client_trace;
 pub mod deck;
 pub mod http;
 pub mod serato;
+pub mod shell;
 pub mod trace;
 pub mod traktor;
