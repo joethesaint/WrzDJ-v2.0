@@ -6,8 +6,8 @@
 //!   answered in 10 s counts as failed (the transport's job).
 //! - Circuit breaker: 3 failed POSTs in a row open it for 60 s; then one probe decides.
 //! - A now-playing post that fails is kept (the last 20) and replayed, marked `delayed`, when the
-//!   breaker closes again. As in the TypeScript, a replay that fails stops and drops what it
-//!   had taken from the buffer.
+//!   breaker closes again. A replay that fails partway puts the unsent tracks back at the front
+//!   of the buffer, in order (#961).
 //! - Debounce: the same track, or any track within `min_play_s` of the last post, is skipped.
 //!
 //! The network and the clock are behind [`Io`], so the same code runs on real HTTP or on a
@@ -189,11 +189,23 @@ impl<I: Io> Client<I> {
 
     fn replay(&mut self) {
         let tracks: Vec<Value> = self.buffer.drain(..).collect();
-        for mut payload in tracks {
-            payload["delayed"] = json!(true);
-            if !self.post_with_retry("/api/bridge/nowplaying", &payload) {
-                return; // backend down again: the rest of this batch is dropped, as in bridge.ts
+        for (i, payload) in tracks.iter().enumerate() {
+            let mut replayed = payload.clone();
+            replayed["delayed"] = json!(true);
+            if !self.post_with_retry("/api/bridge/nowplaying", &replayed) {
+                self.requeue_front(&tracks[i..]); // keep the unsent tracks (#961)
+                return;
             }
+        }
+    }
+
+    /// `TrackHistoryBuffer.requeueFront`: back at the front, in order; over the cap, oldest go.
+    fn requeue_front(&mut self, items: &[Value]) {
+        for item in items.iter().rev() {
+            self.buffer.push_front(item.clone());
+        }
+        while self.buffer.len() > BUFFER_CAPACITY {
+            self.buffer.pop_front();
         }
     }
 

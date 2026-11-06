@@ -66,9 +66,9 @@ WRZDJ_API_URL=http://localhost:8000 WRZDJ_BRIDGE_API_KEY=... WRZDJ_EVENT_CODE=AB
 Checked on a local server: status marks the Bridge connected; now playing replaces the song and
 moves the old one to history; clear empties it; a wrong key gives up after 4 tries in 14 s.
 
-**Kept as it is, on purpose:** when a replay fails partway, `bridge.ts` drops the tracks it had
-already taken from the buffer. The port does the same so the two can be compared; fixing it is a
-separate change to both.
+**Replay that fails partway (#961):** the failed track and the unsent ones go back to the front
+of the buffer, in order, as the fixed TypeScript does; the differential test compares against
+that fix.
 
 ## Piece 3: Traktor broadcast and a running Bridge
 
