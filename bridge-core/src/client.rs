@@ -23,13 +23,22 @@ pub const DELETE_MAX_RETRIES: u32 = 2;
 pub const DELETE_BACKOFF_MS: u64 = 1000;
 pub const BUFFER_CAPACITY: usize = 20;
 
+/// Why a request failed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SendError {
+    /// The server answered with a status outside 2xx.
+    Status(u16),
+    /// No answer: refused, dropped, timed out.
+    Network(String),
+}
+
 /// The network and the clock.
 pub trait Io {
     /// Milliseconds on a clock that only goes forward.
     fn now(&self) -> u64;
     fn sleep(&mut self, ms: u64);
-    /// One request; `Ok` for a 2xx answer, `Err` (a short reason) for anything else.
-    fn send(&mut self, method: &str, path: &str, body: Option<&Value>) -> Result<(), String>;
+    /// One request; `Ok` for a 2xx answer.
+    fn send(&mut self, method: &str, path: &str, body: Option<&Value>) -> Result<(), SendError>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -126,6 +135,7 @@ pub struct Client<I: Io> {
     buffer: VecDeque<Value>,
     last_track_key: Option<String>,
     last_post: u64,
+    session_expired: bool,
 }
 
 fn track_key(artist: &str, title: &str) -> String {
@@ -145,7 +155,13 @@ impl<I: Io> Client<I> {
             buffer: VecDeque::new(),
             last_track_key: None,
             last_post: 0,
+            session_expired: false,
         }
+    }
+
+    /// A POST got 401: the Bridge's key is no longer accepted, so it should stop.
+    pub fn session_expired(&self) -> bool {
+        self.session_expired
     }
 
     pub fn buffered(&self) -> usize {
@@ -176,6 +192,12 @@ impl<I: Io> Client<I> {
                         self.replay();
                     }
                     return true;
+                }
+                // bridge-runner.ts: a 401 is the key, not the server being down. Stop retrying, don't
+                // count it against the breaker, and stop the Bridge ("Session expired").
+                Err(SendError::Status(401)) => {
+                    self.session_expired = true;
+                    return false;
                 }
                 Err(_) if attempt < MAX_RETRIES => {
                     self.io.sleep(INITIAL_BACKOFF_MS << attempt);
@@ -269,5 +291,64 @@ impl<I: Io> Client<I> {
                 Err(_) => {}
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A network that answers every request with the same result.
+    struct Fixed {
+        answer: Result<(), SendError>,
+        sent: usize,
+        now: u64,
+    }
+
+    impl Io for Fixed {
+        fn now(&self) -> u64 {
+            self.now
+        }
+        fn sleep(&mut self, ms: u64) {
+            self.now += ms;
+        }
+        fn send(&mut self, _: &str, _: &str, _: Option<&Value>) -> Result<(), SendError> {
+            self.sent += 1;
+            self.answer.clone()
+        }
+    }
+
+    fn client(answer: Result<(), SendError>) -> Client<Fixed> {
+        let io = Fixed {
+            answer,
+            sent: 0,
+            now: 100_000,
+        };
+        Client::new(
+            io,
+            ClientConfig {
+                event_code: "E".into(),
+                min_play_s: 5,
+            },
+        )
+    }
+
+    #[test]
+    fn a_401_stops_without_retrying_or_counting_against_the_breaker() {
+        let mut c = client(Err(SendError::Status(401)));
+        assert!(!c.post_now_playing("A", "B", None, "1", "serato"));
+        assert_eq!(c.io.sent, 1);
+        assert_eq!(c.breaker.failures, 0);
+        assert!(c.session_expired());
+        assert_eq!(c.buffered(), 1); // kept, as bridge-runner.ts does, for after a new sign-in
+    }
+
+    #[test]
+    fn a_500_is_retried_and_counted() {
+        let mut c = client(Err(SendError::Status(500)));
+        assert!(!c.post_now_playing("A", "B", None, "1", "serato"));
+        assert_eq!(c.io.sent, 4);
+        assert_eq!(c.breaker.failures, 1);
+        assert!(!c.session_expired());
     }
 }

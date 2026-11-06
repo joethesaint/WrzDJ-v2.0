@@ -4,7 +4,7 @@
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::client::{Client, ClientConfig, Io};
+use crate::client::{Client, ClientConfig, Io, SendError};
 
 #[derive(Deserialize)]
 pub struct Op {
@@ -36,13 +36,14 @@ impl Io for ScriptedIo {
     fn sleep(&mut self, ms: u64) {
         self.now += ms.max(1);
     }
-    fn send(&mut self, method: &str, path: &str, body: Option<&Value>) -> Result<(), String> {
+    fn send(&mut self, method: &str, path: &str, body: Option<&Value>) -> Result<(), SendError> {
         self.requests.push(json!({
             "t": self.now, "method": method, "path": path, "key": "test-key", "body": body,
         }));
         match self.net.pop_front().unwrap_or(json!(200)) {
             Value::Number(n) if (200..300).contains(&n.as_u64().unwrap_or(0)) => Ok(()),
-            other => Err(other.to_string()),
+            Value::Number(n) => Err(SendError::Status(n.as_u64().unwrap_or(0) as u16)),
+            other => Err(SendError::Network(other.to_string())),
         }
     }
 }

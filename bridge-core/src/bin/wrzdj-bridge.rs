@@ -29,7 +29,12 @@ const HEARTBEAT: Duration = Duration::from_secs(120);
 enum SourceEvent {
     Connected(&'static str),
     Disconnected,
-    Track { deck: String, track: Track },
+    Track {
+        deck: String,
+        track: Track,
+    },
+    /// Stop the Bridge (from the server client: the key was refused).
+    Stop(&'static str),
 }
 
 /// A source, as `plugin-types.ts` describes it.
@@ -186,6 +191,7 @@ fn main() {
 
     let started = Instant::now();
     let (tx, rx) = mpsc::channel();
+    let stop_tx = tx.clone();
     let source = match env("WRZDJ_PLUGIN", "traktor-broadcast").as_str() {
         "traktor-broadcast" => start_traktor(tx),
         "serato" => start_serato(tx),
@@ -200,6 +206,7 @@ fn main() {
         min_play_s,
         started,
         source.id,
+        stop_tx,
     );
     log(&format!(
         "WrzDJ Bridge (Rust, {}) for event {code}, server {url}",
@@ -267,6 +274,10 @@ fn main() {
                     let _ = decks.update_play_state(&deck, true);
                 }
             }
+            Ok(SourceEvent::Stop(reason)) => {
+                eprintln!("[Bridge] Stopped: {reason}");
+                std::process::exit(3);
+            }
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => fail("the source stopped"),
         }
@@ -304,6 +315,7 @@ fn spawn_client(
     min_play_s: u64,
     started: Instant,
     plugin_id: &'static str,
+    stop: Sender<SourceEvent>,
 ) -> Sender<Job> {
     let (tx, rx) = mpsc::channel::<Job>();
     std::thread::Builder::new()
@@ -349,6 +361,15 @@ fn spawn_client(
                         client.post_status(connected, device, plugin_id);
                     }
                     Job::Clear => client.clear_now_playing(),
+                }
+                // bridge-runner.ts: a 401 stops the Bridge; its stop() clears and reports
+                // disconnected first.
+                if client.session_expired() {
+                    eprintln!("[Bridge] POST returned 401 — session expired");
+                    client.clear_now_playing();
+                    client.post_status(false, None, plugin_id);
+                    let _ = stop.send(SourceEvent::Stop("Session expired — please log in again"));
+                    return;
                 }
             }
         })

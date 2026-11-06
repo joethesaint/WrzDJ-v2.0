@@ -4,7 +4,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
 
-use crate::client::Io;
+use crate::client::{Io, SendError};
 
 pub const FETCH_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -47,7 +47,7 @@ impl Io for HttpIo {
         std::thread::sleep(Duration::from_millis(ms));
     }
 
-    fn send(&mut self, method: &str, path: &str, body: Option<&Value>) -> Result<(), String> {
+    fn send(&mut self, method: &str, path: &str, body: Option<&Value>) -> Result<(), SendError> {
         let url = format!("{}{}", self.base_url, path);
         let response = match (method, body) {
             ("POST", Some(body)) => self
@@ -61,12 +61,12 @@ impl Io for HttpIo {
                 .delete(&url)
                 .header("X-Bridge-API-Key", &self.api_key)
                 .call(),
-            _ => return Err(format!("unsupported request {method}")),
+            _ => return Err(SendError::Network(format!("unsupported request {method}"))),
         };
         match response {
             Ok(r) if r.status().is_success() => Ok(()),
-            Ok(r) => Err(format!("HTTP {}", r.status().as_u16())),
-            Err(e) => Err(e.to_string()),
+            Ok(r) => Err(SendError::Status(r.status().as_u16())),
+            Err(e) => Err(SendError::Network(e.to_string())),
         }
     }
 }
