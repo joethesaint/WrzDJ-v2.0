@@ -50,6 +50,10 @@ pub trait Io {
     fn sleep(&mut self, ms: u64);
     /// One request; `Ok` for a 2xx answer.
     fn send(&mut self, method: &str, path: &str, body: Option<&Value>) -> Result<(), SendError>;
+    /// A GET, returning the body of a 2xx answer.
+    fn get(&mut self, path: &str) -> Result<String, SendError> {
+        Err(SendError::Network(format!("GET {path} not supported here")))
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -316,6 +320,47 @@ impl<I: Io> Client<I> {
         self.post_with_retry("/api/bridge/status", &payload)
     }
 
+    /// `CommandPoller.poll()`: the dashboard's pending commands, as (type, payload). It shares the
+    /// breaker: skipped while it refuses, and a success closes it (which replays, as in bridge.ts);
+    /// a failed poll is only logged, never counted.
+    pub fn poll_commands(&mut self) -> Vec<(String, Value)> {
+        if !self.breaker.allow(self.io.now()) {
+            return Vec::new();
+        }
+        let path = format!("/api/bridge/commands/{}", self.cfg.event_code);
+        let body = match self.io.get(&path) {
+            Ok(body) => body,
+            Err(e) => {
+                log::warn("commands:poll", format!("Command poll failed: {e}"));
+                return Vec::new();
+            }
+        };
+        if self.breaker.success() {
+            self.replay();
+        }
+        let parsed: Value = match serde_json::from_str(&body) {
+            Ok(v) => v,
+            Err(e) => {
+                log::warn(
+                    "commands:poll",
+                    format!("Command poll failed: bad JSON: {e}"),
+                );
+                return Vec::new();
+            }
+        };
+        parsed["commands"]
+            .as_array()
+            .map(|cmds| {
+                cmds.iter()
+                    .filter_map(|c| {
+                        let kind = c["command_type"].as_str()?.to_string();
+                        Some((kind, c.get("payload").cloned().unwrap_or(Value::Null)))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// `clearNowPlaying`: no breaker, 3 tries.
     pub fn clear_now_playing(&mut self) {
         let path = format!("/api/bridge/nowplaying/{}", self.cfg.event_code);
@@ -359,6 +404,12 @@ mod tests {
             self.sent += 1;
             self.answer.clone()
         }
+        fn get(&mut self, _: &str) -> Result<String, SendError> {
+            self.sent += 1;
+            self.answer.clone().map(|()| {
+                r#"{"commands":[{"command_id":"1","command_type":"reset_decks"},{"command_id":"2","command_type":"setbuilder_transport","payload":{"action":"play"}}]}"#.into()
+            })
+        }
     }
 
     fn client(answer: Result<(), SendError>) -> Client<Fixed> {
@@ -393,5 +444,35 @@ mod tests {
         assert_eq!(c.io.sent, 4);
         assert_eq!(c.breaker.failures, 1);
         assert!(!c.session_expired());
+    }
+
+    #[test]
+    fn polled_commands_come_back_with_their_payloads() {
+        let mut c = client(Ok(()));
+        let cmds = c.poll_commands();
+        assert_eq!(cmds[0].0, "reset_decks");
+        assert_eq!(cmds[1].0, "setbuilder_transport");
+        assert_eq!(cmds[1].1["action"], "play");
+    }
+
+    #[test]
+    fn a_failed_poll_is_not_counted_against_the_breaker() {
+        let mut c = client(Err(SendError::Status(500)));
+        assert!(c.poll_commands().is_empty());
+        assert_eq!(c.breaker.failures, 0);
+    }
+
+    #[test]
+    fn a_successful_poll_closes_an_open_breaker() {
+        let mut c = client(Err(SendError::Status(500)));
+        for _ in 0..3 {
+            c.post_status(true, None, "serato");
+        }
+        assert_eq!(c.breaker.state, BreakerState::Open);
+        c.io.answer = Ok(());
+        assert!(c.poll_commands().is_empty()); // still cooling down: skipped, nothing sent
+        c.io.now += 60_000;
+        assert_eq!(c.poll_commands().len(), 2);
+        assert_eq!(c.breaker.state, BreakerState::Closed);
     }
 }
