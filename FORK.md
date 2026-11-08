@@ -6,12 +6,13 @@ This is joethesaint's fork of [wrzonance/WrzDJ](https://github.com/wrzonance/Wrz
 Nothing goes upstream without an Issue first. Features still in review stay out of this fork until they are ready
 to propose. `main` here tracks upstream `main`; this file is the only addition.
 
-*Updated 2026-11-06. Upstream `main` at `0bbcf40`.*
+*Updated 2026-11-08. This fork's `main` is at upstream `0bbcf40`; upstream has moved on since.*
 
 ## 1. In upstream: merged from this fork
 
 | PR | Merged | Change |
 |---|---|---|
+| [#964](https://github.com/wrzonance/WrzDJ/pull/964) | 2026-11-06 | Stopping the Bridge sends one clear, and the server archives a song once (#963) |
 | [#938](https://github.com/wrzonance/WrzDJ/pull/938) | 2026-11-05 | SSE: the stream's event lookup runs off the event loop; DB pool sized |
 | [#932](https://github.com/wrzonance/WrzDJ/pull/932) | 2026-11-05 | Guest cookie lifetime configurable, shorter default (#909) |
 | [#908](https://github.com/wrzonance/WrzDJ/pull/908) | 2026-11-05 | Provider drift check: live answers vs the test fakes |
@@ -27,10 +28,11 @@ to propose. `main` here tracks upstream `main`; this file is the only addition.
 
 ## 2. Proposed upstream: open
 
-| Issue | PR (draft) | Change |
+| Issue | PR | Change |
 |---|---|---|
-| [#961](https://github.com/wrzonance/WrzDJ/issues/961) | [#962](https://github.com/wrzonance/WrzDJ/pull/962) | A replay that fails partway no longer drops the buffered tracks (CI green) |
-| [#963](https://github.com/wrzonance/WrzDJ/issues/963) | [#964](https://github.com/wrzonance/WrzDJ/pull/964) | Stopping the Bridge sends one clear, and the server archives a song once |
+| [#961](https://github.com/wrzonance/WrzDJ/issues/961) | [#962](https://github.com/wrzonance/WrzDJ/pull/962) (ready) | After an outage, buffered tracks all reach history and only the newest goes live |
+| [#975](https://github.com/wrzonance/WrzDJ/issues/975) | [#977](https://github.com/wrzonance/WrzDJ/pull/977) (draft) | The dashboard's restart command no longer stops now playing for good |
+| [#976](https://github.com/wrzonance/WrzDJ/issues/976) | [#978](https://github.com/wrzonance/WrzDJ/pull/978) (draft) | The first Pioneer player is reported as connected |
 | [#965](https://github.com/wrzonance/WrzDJ/issues/965) | — | RFC: the Bridge in Rust (see `rust/bridge-core`) |
 
 ## 3. On this fork only
@@ -39,7 +41,9 @@ to propose. `main` here tracks upstream `main`; this file is the only addition.
 |---|---|---|
 | `rust/bridge-core` | The Bridge rewritten in Rust | Builds and tests on Windows, macOS and Linux |
 | `fix/bridge-replay-keeps-tracks` | Head of #962 | Open PR |
-| `fix/bridge-single-clear` | Head of #964 | Open PR |
+| `fix/bridge-single-clear` | Head of #964 | Merged; branch can be deleted |
+| `fix/bridge-restart-revives-decks` | Head of #977 | Open PR |
+| `fix/prolink-report-first-player` | Head of #978 | Open PR |
 
 Branches of merged PRs are deleted once merged; GitHub restores any of them from its PR page.
 
